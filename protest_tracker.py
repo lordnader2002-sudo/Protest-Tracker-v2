@@ -40,7 +40,7 @@ MOBILIZE_API    = "https://api.mobilize.us/v1/events"
 MOBILIZE_API_KEY = os.environ.get("MOBILIZE_API_KEY", "")
 
 SEARCH_RADIUS_MI  = 3    # hard filter: must be within this many miles of property
-QUERY_RADIUS_MI   = 6    # wider API query to account for zipcode-centre offset
+CLUSTER_RADIUS_MI = 35   # properties within this distance share one API query
 DAYS_GENERAL      = 3    # 3-day event window
 DAYS_NO_KINGS     = 30   # No Kings event window
 
@@ -254,48 +254,100 @@ def is_no_kings(event: dict) -> bool:
     return any(kw in text for kw in NO_KINGS_KEYWORDS)
 
 
+# ── Geographic clustering ──────────────────────────────────────────────────────
+
+def cluster_properties(properties: list[dict]) -> list[list[dict]]:
+    """
+    Group properties into geographic clusters so nearby properties share a
+    single API query instead of one query per zip code.
+
+    Algorithm: greedy single-linkage — seed each cluster from the first
+    unassigned property and absorb any unassigned property within
+    CLUSTER_RADIUS_MI of that seed.  Returns a list of clusters, where
+    each cluster is a list of property dicts.
+    """
+    assigned: set[int] = set()
+    clusters: list[list[dict]] = []
+
+    for i, seed in enumerate(properties):
+        if i in assigned:
+            continue
+        cluster = [seed]
+        assigned.add(i)
+        for j, candidate in enumerate(properties):
+            if j in assigned:
+                continue
+            if haversine(seed["lat"], seed["lon"],
+                         candidate["lat"], candidate["lon"]) <= CLUSTER_RADIUS_MI:
+                cluster.append(candidate)
+                assigned.add(j)
+        clusters.append(cluster)
+
+    return clusters
+
+
+def cluster_query_params(cluster: list[dict]) -> tuple[str, int]:
+    """
+    Return (zip_code, query_radius_miles) for a cluster.
+
+    zip  – taken from the property nearest to the cluster's geographic centroid
+    radius – distance from centroid to farthest member + SEARCH_RADIUS_MI + 1 mile buffer
+    """
+    centroid_lat = sum(p["lat"] for p in cluster) / len(cluster)
+    centroid_lon = sum(p["lon"] for p in cluster) / len(cluster)
+
+    nearest = min(cluster,
+                  key=lambda p: haversine(centroid_lat, centroid_lon, p["lat"], p["lon"]))
+    max_dist = max(haversine(centroid_lat, centroid_lon, p["lat"], p["lon"])
+                   for p in cluster)
+    query_radius = math.ceil(max_dist + SEARCH_RADIUS_MI + 1)
+
+    return nearest["zip"], query_radius
+
+
 # ── Core collection logic ──────────────────────────────────────────────────────
 
 def collect_events(
     properties: list[dict],
 ) -> tuple[list[dict], list[dict]]:
     """
-    Query Mobilize.us for each unique zip code.  Returns:
+    Cluster properties geographically, then fire one Mobilize.us API query
+    per cluster instead of one per zip code.  Typical reduction: ~200 calls
+    down to ~40-60 calls.
+
+    Returns:
       general_rows  – protest-type events within DAYS_GENERAL days
       no_kings_rows – No Kings events within DAYS_NO_KINGS days
     Both lists are sorted by event start time.
     """
     now_ts  = int(datetime.now(tz=timezone.utc).timestamp())
     end_30d = now_ts + DAYS_NO_KINGS * 86_400
+    end_3d  = now_ts + DAYS_GENERAL  * 86_400
 
-    # Group properties by zip to minimise API calls
-    zip_to_props: dict[str, list[dict]] = {}
-    for p in properties:
-        zip_to_props.setdefault(p["zip"], []).append(p)
+    clusters = cluster_properties(properties)
+    print(f"  Clustered {len(properties)} properties into {len(clusters)} geographic groups.\n")
 
     general_rows:  list[dict] = []
     no_kings_rows: list[dict] = []
-    # Deduplication sets: (event_id, property_id, timeslot_start_unix)
     seen_general:  set[tuple] = set()
     seen_no_kings: set[tuple] = set()
 
-    total = len(zip_to_props)
-    end_3d = now_ts + DAYS_GENERAL * 86_400
+    for idx, cluster in enumerate(clusters, 1):
+        zip_code, query_radius = cluster_query_params(cluster)
+        names = ", ".join(p["name"] for p in cluster[:3])
+        suffix = f" +{len(cluster)-3} more" if len(cluster) > 3 else ""
+        print(f"  [{idx:>3}/{len(clusters)}] zip={zip_code}  r={query_radius}mi  "
+              f"({names}{suffix})")
 
-    for idx, (zcode, zprops) in enumerate(zip_to_props.items(), 1):
-        label = zprops[0]["name"] if zprops else zcode
-        print(f"  [{idx:>3}/{total}] zip={zcode}  ({label[:45]})")
-
-        # Fetch one 30-day window — covers both sheets
-        events = fetch_events_for_zip(zcode, QUERY_RADIUS_MI, now_ts, end_30d)
-        print(f"         → {len(events)} event(s) returned by API")
+        events = fetch_events_for_zip(zip_code, query_radius, now_ts, end_30d)
+        print(f"           → {len(events)} event(s) returned by API")
 
         for ev in events:
             eid       = ev.get("id")
             etype_raw = (ev.get("event_type") or "OTHER").upper()
             no_kings  = is_no_kings(ev)
 
-            for prop in zprops:
+            for prop in cluster:
                 rows = expand_event(ev, prop)
                 if not rows:
                     continue
@@ -579,6 +631,7 @@ def main() -> None:
     print(f"  Output file    : {args.output}")
     print(f"  Authenticated  : {'Yes' if MOBILIZE_API_KEY else 'No (set MOBILIZE_API_KEY for better rate limits)'}")
     print(f"  Search radius  : {SEARCH_RADIUS_MI} miles")
+    print(f"  Cluster radius : {CLUSTER_RADIUS_MI} miles (properties grouped for fewer API calls)")
     print(f"  General window : today + {DAYS_GENERAL} days")
     print(f"  No Kings window: today + {DAYS_NO_KINGS} days")
     print("=" * 64)
