@@ -46,12 +46,10 @@ DAYS_NO_KINGS     = 30   # No Kings event window
 
 NO_KINGS_KEYWORDS = ["no kings", "nokings", "no_kings", "#nokings", "50501"]
 
-# Event types considered "protest-related" for the 3-day sheet.
-# The No Kings sheet includes ALL event types (keyword match is enough).
-PROTEST_TYPES = {
-    "PROTEST", "RALLY", "MARCH", "TOWN_HALL",
-    "SOLIDARITY_EVENT", "COMMUNITY", "OTHER",
-}
+# Event types to EXCLUDE from the 3-day sheet (pure campaign/admin work).
+# Everything else — including PROTEST, RALLY, MEETING, COMMUNITY, etc. — is kept.
+EXCLUDE_TYPES = {"PHONE_BANK", "TEXT_BANK", "AUTOMATED_PHONE_BANK", "LETTER_WRITING",
+                 "VOTER_REG", "FUNDRAISER", "TRAINING", "FRIEND_TO_FRIEND_OUTREACH"}
 
 REQUEST_DELAY  = 2.0   # seconds between successful API requests
 MAX_RETRIES    = 3     # max retries on transient errors (NOT 429)
@@ -168,6 +166,12 @@ def fetch_events_for_zip(zipcode: str, max_dist: int,
                 if resp.status_code == 429:
                     # Signal caller to retry this cluster later.
                     raise RateLimitError(zipcode)
+
+                if resp.status_code == 400:
+                    # Bad request — invalid zip or malformed params. Not retryable.
+                    print(f"    [400] Bad request for zip={zipcode} — skipping cluster.",
+                          file=sys.stderr)
+                    return events
 
                 resp.raise_for_status()
                 payload = resp.json()
@@ -344,7 +348,7 @@ def collect_events(
                     continue
                 for row in rows:
                     ts_key = (eid, prop["id"], row["event_dt_sort"])
-                    if (etype_raw in PROTEST_TYPES
+                    if (etype_raw not in EXCLUDE_TYPES
                             and row["event_dt_sort"].timestamp() <= end_3d
                             and ts_key not in seen_general):
                         seen_general.add(ts_key)
