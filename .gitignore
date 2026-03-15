@@ -1,0 +1,10 @@
+# Generated Excel reports
+*.xlsx
+*.xls
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+venv/
