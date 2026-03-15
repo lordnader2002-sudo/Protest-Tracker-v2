@@ -26,6 +26,8 @@ jobs:
         run: pip install requests openpyxl
 
       - name: Run Protest Tracker
+        env:
+          MOBILIZE_API_KEY: ${{ secrets.MOBILIZE_API_KEY }}
         run: |
           python3 protest_tracker.py \
             --output "protest_tracker_$(date +'%Y-%m-%d').xlsx"
