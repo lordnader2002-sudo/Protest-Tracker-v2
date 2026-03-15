@@ -125,6 +125,10 @@ def load_properties(path: str) -> list[dict]:
     return props
 
 
+class RateLimitError(Exception):
+    """Raised when Mobilize.us returns HTTP 429 so the caller can retry later."""
+
+
 def _build_headers() -> dict:
     headers = {"User-Agent": "ProtestTracker/1.0 (internal security monitoring tool)"}
     if MOBILIZE_API_KEY:
@@ -162,11 +166,8 @@ def fetch_events_for_zip(zipcode: str, max_dist: int,
                 )
 
                 if resp.status_code == 429:
-                    # Skip immediately — retrying a rate-limit just wastes time.
-                    # This zip will be picked up on the next daily run.
-                    print(f"    [429] Rate-limited on zip={zipcode} — skipping.",
-                          file=sys.stderr)
-                    return events
+                    # Signal caller to retry this cluster later.
+                    raise RateLimitError(zipcode)
 
                 resp.raise_for_status()
                 payload = resp.json()
@@ -332,6 +333,29 @@ def collect_events(
     seen_general:  set[tuple] = set()
     seen_no_kings: set[tuple] = set()
 
+    def process_events(events: list[dict], cluster: list[dict]) -> None:
+        for ev in events:
+            eid       = ev.get("id")
+            etype_raw = (ev.get("event_type") or "OTHER").upper()
+            no_kings  = is_no_kings(ev)
+            for prop in cluster:
+                rows = expand_event(ev, prop)
+                if not rows:
+                    continue
+                for row in rows:
+                    ts_key = (eid, prop["id"], row["event_dt_sort"])
+                    if (etype_raw in PROTEST_TYPES
+                            and row["event_dt_sort"].timestamp() <= end_3d
+                            and ts_key not in seen_general):
+                        seen_general.add(ts_key)
+                        general_rows.append(row)
+                    if no_kings and ts_key not in seen_no_kings:
+                        seen_no_kings.add(ts_key)
+                        no_kings_rows.append(row)
+
+    # ── First pass ────────────────────────────────────────────────────────────
+    retry_queue: list[list[dict]] = []   # clusters that hit 429 on first pass
+
     for idx, cluster in enumerate(clusters, 1):
         zip_code, query_radius = cluster_query_params(cluster)
         names = ", ".join(p["name"] for p in cluster[:3])
@@ -339,33 +363,54 @@ def collect_events(
         print(f"  [{idx:>3}/{len(clusters)}] zip={zip_code}  r={query_radius}mi  "
               f"({names}{suffix})")
 
-        events = fetch_events_for_zip(zip_code, query_radius, now_ts, end_30d)
-        print(f"           → {len(events)} event(s) returned by API")
+        try:
+            events = fetch_events_for_zip(zip_code, query_radius, now_ts, end_30d)
+            print(f"           → {len(events)} event(s) returned")
+            process_events(events, cluster)
+        except RateLimitError:
+            print(f"    [429] Rate-limited — queued for retry pass.", file=sys.stderr)
+            retry_queue.append(cluster)
 
-        for ev in events:
-            eid       = ev.get("id")
-            etype_raw = (ev.get("event_type") or "OTHER").upper()
-            no_kings  = is_no_kings(ev)
+    # ── Retry pass (60 s head-start, then 5 s between attempts) ─────────────
+    if retry_queue:
+        print(f"\n  {len(retry_queue)} cluster(s) rate-limited. "
+              f"Waiting 60s before retry pass …")
+        time.sleep(60)
 
-            for prop in cluster:
-                rows = expand_event(ev, prop)
-                if not rows:
-                    continue
+        still_failed: list[str] = []
+        for attempt_num in range(1, MAX_RETRIES + 1):
+            next_retry: list[list[dict]] = []
 
-                for row in rows:
-                    ts_key = (eid, prop["id"], row["event_dt_sort"])
+            for cluster in retry_queue:
+                zip_code, query_radius = cluster_query_params(cluster)
+                names = cluster[0]["name"]
+                print(f"  [retry {attempt_num}/{MAX_RETRIES}] zip={zip_code}  ({names})")
+                try:
+                    events = fetch_events_for_zip(zip_code, query_radius, now_ts, end_30d)
+                    print(f"           → {len(events)} event(s) returned")
+                    process_events(events, cluster)
+                    time.sleep(5)
+                except RateLimitError:
+                    next_retry.append(cluster)
 
-                    # 3-day general sheet
-                    if (etype_raw in PROTEST_TYPES
-                            and row["event_dt_sort"].timestamp() <= end_3d
-                            and ts_key not in seen_general):
-                        seen_general.add(ts_key)
-                        general_rows.append(row)
+            retry_queue = next_retry
+            if not retry_queue:
+                print("  All retries succeeded.")
+                break
 
-                    # 30-day No Kings sheet
-                    if no_kings and ts_key not in seen_no_kings:
-                        seen_no_kings.add(ts_key)
-                        no_kings_rows.append(row)
+            if attempt_num < MAX_RETRIES:
+                wait = 60 * attempt_num
+                print(f"  {len(retry_queue)} still rate-limited. "
+                      f"Waiting {wait}s before next retry …")
+                time.sleep(wait)
+
+        if retry_queue:
+            for cluster in retry_queue:
+                zip_code, _ = cluster_query_params(cluster)
+                still_failed.append(zip_code)
+                for prop in cluster:
+                    print(f"  [FAILED] {prop['name']} (zip={prop['zip']}) — "
+                          f"no data after {MAX_RETRIES} retries.", file=sys.stderr)
 
     general_rows.sort(key=lambda r: r["event_dt_sort"])
     no_kings_rows.sort(key=lambda r: r["event_dt_sort"])
