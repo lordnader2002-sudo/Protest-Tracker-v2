@@ -1,0 +1,38 @@
+name: Protest Tracker
+
+on:
+  # Run automatically every day at 6 AM Eastern (11:00 UTC)
+  schedule:
+    - cron: "0 11 * * *"
+
+  # Also allow manual runs from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  run-tracker:
+    name: Fetch Events & Generate Report
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install requests openpyxl
+
+      - name: Run Protest Tracker
+        run: |
+          python3 protest_tracker.py \
+            --output "protest_tracker_$(date +'%Y-%m-%d').xlsx"
+
+      - name: Upload report as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: "protest-tracker-report-${{ github.run_id }}"
+          path: "protest_tracker_*.xlsx"
+          retention-days: 30
