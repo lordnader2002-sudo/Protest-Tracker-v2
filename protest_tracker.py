@@ -48,8 +48,10 @@ PROTEST_TYPES = {
     "SOLIDARITY_EVENT", "COMMUNITY", "OTHER",
 }
 
-REQUEST_DELAY = 0.25   # seconds between API requests (be polite)
-PER_PAGE      = 200    # max results per page
+REQUEST_DELAY  = 1.0   # seconds between successful API requests
+MAX_RETRIES    = 5     # max retries on 429 / transient errors
+RETRY_BACKOFF  = 2.0   # exponential backoff base (seconds): 2, 4, 8, 16, 32
+PER_PAGE       = 200   # max results per page
 
 # ── Excel colour palette ───────────────────────────────────────────────────────
 
@@ -120,7 +122,11 @@ def load_properties(path: str) -> list[dict]:
 
 def fetch_events_for_zip(zipcode: str, max_dist: int,
                          start_ts: int, end_ts: int) -> list[dict]:
-    """Return all public Mobilize events for a zip within the given time window."""
+    """Return all public Mobilize events for a zip within the given time window.
+
+    Retries up to MAX_RETRIES times on 429 (rate-limit) or transient errors,
+    using exponential backoff.  Respects the Retry-After header when present.
+    """
     params: dict = {
         "zipcode":        zipcode,
         "max_dist":       max_dist,
@@ -133,21 +139,42 @@ def fetch_events_for_zip(zipcode: str, max_dist: int,
     url: str | None = MOBILIZE_API
 
     while url:
-        try:
-            resp = requests.get(
-                url,
-                params=params if url == MOBILIZE_API else None,
-                timeout=20,
-            )
-            resp.raise_for_status()
-            payload = resp.json()
-            events.extend(payload.get("data", []))
-            url = payload.get("next")
-            params = None
-            time.sleep(REQUEST_DELAY)
-        except requests.RequestException as exc:
-            print(f"    [WARN] API error zip={zipcode}: {exc}", file=sys.stderr)
-            break
+        for attempt in range(1, MAX_RETRIES + 1):
+            try:
+                resp = requests.get(
+                    url,
+                    params=params if url == MOBILIZE_API else None,
+                    timeout=20,
+                )
+
+                if resp.status_code == 429:
+                    # Respect Retry-After if the server sends it, else backoff
+                    retry_after = resp.headers.get("Retry-After")
+                    wait = float(retry_after) if retry_after else RETRY_BACKOFF ** attempt
+                    print(f"    [429] Rate-limited on zip={zipcode}. "
+                          f"Waiting {wait:.0f}s (attempt {attempt}/{MAX_RETRIES}) …",
+                          file=sys.stderr)
+                    time.sleep(wait)
+                    continue   # retry same page
+
+                resp.raise_for_status()
+                payload = resp.json()
+                events.extend(payload.get("data", []))
+                url = payload.get("next")
+                params = None
+                time.sleep(REQUEST_DELAY)
+                break   # success — move to next page
+
+            except requests.RequestException as exc:
+                wait = RETRY_BACKOFF ** attempt
+                print(f"    [WARN] API error zip={zipcode} (attempt {attempt}/{MAX_RETRIES}): "
+                      f"{exc}. Retrying in {wait:.0f}s …", file=sys.stderr)
+                time.sleep(wait)
+        else:
+            # All retries exhausted for this page
+            print(f"    [ERROR] Giving up on zip={zipcode} after {MAX_RETRIES} attempts.",
+                  file=sys.stderr)
+            url = None   # stop pagination for this zip
 
     return events
 
