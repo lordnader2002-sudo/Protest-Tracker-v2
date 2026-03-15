@@ -20,6 +20,7 @@ Usage
 import argparse
 import csv
 import math
+import os
 import sys
 import time
 from datetime import datetime, timedelta, timezone
@@ -31,8 +32,12 @@ from openpyxl.utils import get_column_letter
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
-PROPERTIES_CSV = "properties.csv"
-MOBILIZE_API   = "https://api.mobilize.us/v1/events"
+PROPERTIES_CSV  = "properties.csv"
+MOBILIZE_API    = "https://api.mobilize.us/v1/events"
+
+# Optional API key — set via env var MOBILIZE_API_KEY or --api-key argument.
+# Authenticated requests have their own rate-limit bucket (avoids shared-IP 429s).
+MOBILIZE_API_KEY = os.environ.get("MOBILIZE_API_KEY", "")
 
 SEARCH_RADIUS_MI  = 3    # hard filter: must be within this many miles of property
 QUERY_RADIUS_MI   = 6    # wider API query to account for zipcode-centre offset
@@ -48,9 +53,9 @@ PROTEST_TYPES = {
     "SOLIDARITY_EVENT", "COMMUNITY", "OTHER",
 }
 
-REQUEST_DELAY  = 1.0   # seconds between successful API requests
-MAX_RETRIES    = 5     # max retries on 429 / transient errors
-RETRY_BACKOFF  = 2.0   # exponential backoff base (seconds): 2, 4, 8, 16, 32
+REQUEST_DELAY  = 2.0   # seconds between successful API requests
+MAX_RETRIES    = 3     # max retries on transient errors (NOT 429)
+RETRY_BACKOFF  = 2.0   # exponential backoff base (seconds): 2, 4, 8
 PER_PAGE       = 200   # max results per page
 
 # ── Excel colour palette ───────────────────────────────────────────────────────
@@ -120,12 +125,19 @@ def load_properties(path: str) -> list[dict]:
     return props
 
 
+def _build_headers() -> dict:
+    headers = {"User-Agent": "ProtestTracker/1.0 (internal security monitoring tool)"}
+    if MOBILIZE_API_KEY:
+        headers["Authorization"] = f"Bearer {MOBILIZE_API_KEY}"
+    return headers
+
+
 def fetch_events_for_zip(zipcode: str, max_dist: int,
                          start_ts: int, end_ts: int) -> list[dict]:
     """Return all public Mobilize events for a zip within the given time window.
 
-    Retries up to MAX_RETRIES times on 429 (rate-limit) or transient errors,
-    using exponential backoff.  Respects the Retry-After header when present.
+    On HTTP 429 (rate-limit): skips the zip immediately — no hanging retries.
+    On transient errors: retries up to MAX_RETRIES times with exponential backoff.
     """
     params: dict = {
         "zipcode":        zipcode,
@@ -137,6 +149,7 @@ def fetch_events_for_zip(zipcode: str, max_dist: int,
     }
     events: list[dict] = []
     url: str | None = MOBILIZE_API
+    headers = _build_headers()
 
     while url:
         for attempt in range(1, MAX_RETRIES + 1):
@@ -144,18 +157,16 @@ def fetch_events_for_zip(zipcode: str, max_dist: int,
                 resp = requests.get(
                     url,
                     params=params if url == MOBILIZE_API else None,
+                    headers=headers,
                     timeout=20,
                 )
 
                 if resp.status_code == 429:
-                    # Respect Retry-After if the server sends it, else backoff
-                    retry_after = resp.headers.get("Retry-After")
-                    wait = float(retry_after) if retry_after else RETRY_BACKOFF ** attempt
-                    print(f"    [429] Rate-limited on zip={zipcode}. "
-                          f"Waiting {wait:.0f}s (attempt {attempt}/{MAX_RETRIES}) …",
+                    # Skip immediately — retrying a rate-limit just wastes time.
+                    # This zip will be picked up on the next daily run.
+                    print(f"    [429] Rate-limited on zip={zipcode} — skipping.",
                           file=sys.stderr)
-                    time.sleep(wait)
-                    continue   # retry same page
+                    return events
 
                 resp.raise_for_status()
                 payload = resp.json()
@@ -171,10 +182,10 @@ def fetch_events_for_zip(zipcode: str, max_dist: int,
                       f"{exc}. Retrying in {wait:.0f}s …", file=sys.stderr)
                 time.sleep(wait)
         else:
-            # All retries exhausted for this page
+            # All retries exhausted for this page (transient errors only)
             print(f"    [ERROR] Giving up on zip={zipcode} after {MAX_RETRIES} attempts.",
                   file=sys.stderr)
-            url = None   # stop pagination for this zip
+            url = None
 
     return events
 
@@ -549,13 +560,24 @@ def main() -> None:
         default=PROPERTIES_CSV,
         help=f"Path to properties CSV (default: {PROPERTIES_CSV})",
     )
+    ap.add_argument(
+        "--api-key", "-k",
+        default="",
+        help="Mobilize.us API key (overrides MOBILIZE_API_KEY env var)",
+    )
     args = ap.parse_args()
+
+    # Allow CLI flag to override env var
+    if args.api_key:
+        global MOBILIZE_API_KEY
+        MOBILIZE_API_KEY = args.api_key
 
     print("=" * 64)
     print("  PROTEST TRACKER")
     print("=" * 64)
     print(f"  Properties CSV : {args.csv}")
     print(f"  Output file    : {args.output}")
+    print(f"  Authenticated  : {'Yes' if MOBILIZE_API_KEY else 'No (set MOBILIZE_API_KEY for better rate limits)'}")
     print(f"  Search radius  : {SEARCH_RADIUS_MI} miles")
     print(f"  General window : today + {DAYS_GENERAL} days")
     print(f"  No Kings window: today + {DAYS_NO_KINGS} days")
