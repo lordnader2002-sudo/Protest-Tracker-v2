@@ -1,9 +1,9 @@
 name: Protest Tracker
 
 on:
-  # Run automatically every day at 6 AM Eastern (11:00 UTC)
+  # Run automatically every day at 7 AM Eastern (12:00 UTC)
   schedule:
-    - cron: "0 11 * * *"
+    - cron: "0 12 * * *"
 
   # Also allow manual runs from the Actions tab
   workflow_dispatch:
