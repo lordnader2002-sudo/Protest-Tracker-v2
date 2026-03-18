@@ -123,6 +123,9 @@ COLUMNS = [
     ("Distance (mi)",           "distance_mi",      14),
     ("Event URL",               "event_url",        12),
     ("Notes",                   "notes",            30),
+    ("Is New?",                 "is_new",            8),
+    ("Duplicate?",              "is_duplicate",      10),
+    ("Recurring?",              "is_recurring",      10),
 ]
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -292,6 +295,7 @@ def expand_event(event: dict, prop: dict, stats: dict | None = None) -> list[dic
     browser_url = event.get("browser_url", "")
     loc_str    = event_location_str(loc)
 
+    eid = event.get("id")
     rows = []
     for ts in event.get("timeslots") or []:
         start_unix = ts.get("start_date")
@@ -299,6 +303,7 @@ def expand_event(event: dict, prop: dict, stats: dict | None = None) -> list[dic
             continue
         dt_utc = datetime.fromtimestamp(start_unix, tz=timezone.utc)
         rows.append({
+            "event_id":       eid,
             "property_id":    prop["id"],
             "property_name":  prop["name"],
             "property_addr":  prop["address"],
@@ -318,6 +323,46 @@ def is_no_kings(event: dict) -> bool:
         (event.get("title") or "") + " " + (event.get("description") or "")
     ).lower()
     return any(kw in text for kw in NO_KINGS_KEYWORDS)
+
+
+def get_prev_event_ids(cache_path: str) -> set | None:
+    """Return the set of event IDs from a previous cache file, or None if unavailable."""
+    if not os.path.exists(cache_path):
+        return None
+    try:
+        with open(cache_path) as f:
+            data = json.load(f)
+        ids = {r["event_id"] for sheet in ("general", "no_kings")
+               for r in data.get(sheet, []) if r.get("event_id")}
+        return ids or None
+    except Exception:
+        return None
+
+
+def annotate_event_flags(rows: list[dict], prev_event_ids: set | None = None) -> None:
+    """Add is_new, is_duplicate, is_recurring fields to each row in-place.
+
+    is_new       – event_id not present in the previous run's cache.
+    is_duplicate – same event appears near 2+ distinct properties this run.
+    is_recurring – same event has 2+ distinct timeslots this run.
+    """
+    from collections import defaultdict
+
+    event_props = defaultdict(set)   # event_id → set of property_ids
+    event_slots = defaultdict(set)   # event_id → set of timeslots
+
+    for row in rows:
+        eid = row.get("event_id")
+        if eid:
+            event_props[eid].add(row.get("property_id", ""))
+            event_slots[eid].add(row.get("event_dt_sort"))
+
+    for row in rows:
+        eid = row.get("event_id")
+        row["is_new"]       = "Yes" if (prev_event_ids is not None
+                                        and eid and eid not in prev_event_ids) else ""
+        row["is_duplicate"] = "Yes" if eid and len(event_props[eid]) > 1 else ""
+        row["is_recurring"] = "Yes" if eid and len(event_slots[eid]) > 1 else ""
 
 
 # ── Geographic clustering ──────────────────────────────────────────────────────
@@ -937,12 +982,29 @@ def main() -> None:
         print(f"\nLoaded {len(properties)} properties.\n")
         print("Querying Mobilize.us public API …\n")
 
+        # Load previous cache (if downloaded by the workflow) for is_new comparison
+        prev_event_ids = get_prev_event_ids(args.cache)
+        if prev_event_ids:
+            print(f"  Previous cache : {len(prev_event_ids)} known event IDs loaded for new-event detection")
+
         general_rows, no_kings_rows = collect_events(properties)
 
         print(f"\n{'─'*64}")
         print(f"  3-Day events found        : {len(general_rows)} property-event rows")
         print(f"  No Kings events found     : {len(no_kings_rows)} property-event rows")
         print(f"{'─'*64}")
+
+        print("\nAnnotating event flags (new / duplicate / recurring) …")
+        annotate_event_flags(general_rows,  prev_event_ids)
+        annotate_event_flags(no_kings_rows, prev_event_ids)
+        new_g  = sum(1 for r in general_rows  if r.get("is_new"))
+        new_nk = sum(1 for r in no_kings_rows if r.get("is_new"))
+        dup_g  = sum(1 for r in general_rows  if r.get("is_duplicate"))
+        rec_g  = sum(1 for r in general_rows  if r.get("is_recurring"))
+        print(f"  New events (3-day)        : {new_g}")
+        print(f"  New events (No Kings)     : {new_nk}")
+        print(f"  Duplicates (3-day)        : {dup_g}")
+        print(f"  Recurring  (3-day)        : {rec_g}")
 
         save_cache(general_rows, no_kings_rows, args.cache)
 
