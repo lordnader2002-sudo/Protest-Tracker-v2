@@ -28,7 +28,7 @@
     --th-bg-to:         #2563eb;
     --th-nk-from:       #8b5cf6;
     --th-nk-to:         #7c3aed;
-    --td-stripe:        rgba(0,0,0,.025);
+    --td-border-color:  rgba(0,0,0,.11);
 
     --band-red:         #ffd8d8;
     --band-amber:       #fff0b8;
@@ -59,7 +59,7 @@
     --th-bg-to:         #1d4ed8;
     --th-nk-from:       #7c3aed;
     --th-nk-to:         #6d28d9;
-    --td-stripe:        rgba(255,255,255,.03);
+    --td-border-color:  rgba(255,255,255,.07);
 
     --band-red:         #3a1515;
     --band-amber:       #352a06;
@@ -247,11 +247,10 @@
 
   tbody tr { cursor: default; transition: filter .1s; }
   tbody tr:hover td { filter: brightness(.93); }
-  tbody tr:nth-child(even) td { background-color: var(--td-stripe); }
 
   td {
     padding: 4px 10px; font-size: 12px; white-space: nowrap;
-    border-bottom: 1px solid rgba(0,0,0,.04);
+    border-bottom: 1px solid var(--td-border-color);
   }
   td.wrap  { white-space: normal; max-width: 320px; }
   td.prop  { font-weight: 600; }
