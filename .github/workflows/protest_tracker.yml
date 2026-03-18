@@ -85,14 +85,17 @@ jobs:
           retention-days: 30
 
       # ── Deploy dashboard to GitHub Pages ──────────────────────────────────
+      - name: Stage Pages assets
+        run: |
+          mkdir -p _site
+          cp index.html _site/
+          cp dashboard_data.json _site/
+
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./
+          publish_dir: ./_site
           publish_branch: gh-pages
-          include_files: |
-            index.html
-            dashboard_data.json
           force_orphan: false
           keep_files: false
