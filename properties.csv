@@ -6,7 +6,7 @@ ANC5Ave,Anchorage 5th Avenue Mall,320 West 5th Avenue Anchorage AK 99501,99501,6
 APPLEBLOS,Apple Blossom Mall,1850 Apple Blossom Drive Winchester VA 22601,22601,39.16014,-78.16336
 ARZMILLS,Arizona Mill,5000 South Arizona Mills Circle Tempe AZ 85282,85282,33.38327,-111.96453
 ARUNMILLS,Arundel Mills,7000 Arundel Mills Circle Hanover MD 21076,21076,39.15722,-76.72491
-AUBURNM,Auburn Mall,"385 Southbridge Street Auburn, MA 01501",1501,42.20208,-71.83519
+AUBURNM,Auburn Mall,"385 Southbridge Street Auburn, MA 01501",01501,42.20208,-71.83519
 AURORAFARMS,Aurora Farms Premium Outlets,549 Sotuh Chillicothe Road Aurora OH 44202,44202,41.30171,-81.34315
 BARTONCREEK,Barton Creek Square,2901 Capital of Texas Highway Austin TX 78746,78746,30.25737,-97.80718
 BATTLEFIELD,Battlefield Mall,2825 South Glenstone Avenue Springfield MO 65804,65804,37.16282,-93.26571
@@ -17,10 +17,10 @@ BREA,Brea Mall,1065 Brea Mall Brea CA 92821,92821,33.91557,-117.88629
 BRIARWOOD,Briarwood Mall,100 Briarwood Circle Ann Arbor MI 48108,48108,42.2403,-83.74688
 BRICKELL,Brickell City Centre,"701 S Miami Ave, Miami FL 33130 USA",33130,25.7677508,-80.1930238
 BROADWAY,Broadway Square,4601 South Broadway Tyler TX 75703,75703,32.2991781,-95.3027361
-BURLINGTON,Burlington Mall,75 Middlesex Turnpike Burlington MA 01803,1803,42.482391,-71.2136759
+BURLINGTON,Burlington Mall,75 Middlesex Turnpike Burlington MA 01803,01803,42.482391,-71.2136759
 CALHOUN,Calhoun Outlet Marketplace,455 Belwood Road Calhoun GA 30701,30701,34.4619896,-84.9185353
 CAMARILLO,Camarillo Premium Outlets,740 East Ventura Boulevard Camarillo CA 93010,93010,34.2174406,-119.0607103
-CAPECOD,Cape Cod Mall,769 Iyannough Road Hyannis MA 02601,2601,41.6673484,-70.2966157
+CAPECOD,Cape Cod Mall,769 Iyannough Road Hyannis MA 02601,02601,41.6673484,-70.2966157
 CARLSBAD,Carlsbad Premium Outlets,5620 Paseo del Norte Carlsbad CA 92008,92008,33.1229539,-117.3175914
 CAROLINA,Carolina Premium Outlets,1025 Industrial Park Drive Smithfield NC 27577,27577,35.5102043,-78.316119
 CASTLETON,Castleton Square,6020 East 82nd Street Indianapolis IN 46250,46250,39.9092273,-86.065379
@@ -31,13 +31,13 @@ CIELOVISTA,Cielo Vista Mall,8401 Gateway Boulevard West El Paso TX 79925,79925,3
 CINCINNATI,Cincinnati Premium Outlets,400 Premium Outlets Drive Monroe OH 45050,45050,39.4337564,-84.3365389
 CITYCREEK,City Creek Center,"50 South Main Street, Salt Lake City UT 84101",84101,40.768357,-111.8917453
 CLARKSBURG,Clarksburg Premium Outlets,22705 Clarksburg Rd Clarksburg MD 20871,20871,39.2284351,-77.2872958
-CLINTON,Clinton Premium Outlets,20-A Killingworth Turnpike Clinton CT 06413,6413,41.2895459,-72.5317866
+CLINTON,Clinton Premium Outlets,20-A Killingworth Turnpike Clinton CT 06413,06413,41.2895459,-72.5317866
 COCONUT,Coconut Point,23106 Fashion Drive Estero FL 33928,33928,26.4016488,-81.807491
 COLLEGE,College Mall,2894 East Third Street Bloomington IN 47401,47401,39.1617753,-86.4944428
 COLORADO,Colorado Mills,14500 West Colfax Avenue Lakewood CO 80401,80401,39.7317152,-105.1613776
 COLUMBIACTR,Columbia Center,1321 North Columbia Center Boulevard Kennewick WA 99336,99336,46.2263903,-119.2276594
 CONCORD,Concord Mills,8111 Concord Mills Blvd Concord NC 28027,28027,35.3699428,-80.7247667
-COPLEY,Copley Place,2 Copley Place Boston MA 02116,2116,42.3476153,-71.077633
+COPLEY,Copley Place,2 Copley Place Boston MA 02116,02116,42.3476153,-71.077633
 CORALSQR,Coral Square,9469 West Atlantic Boulevard Coral Springs FL 33071,33071,26.2410392,-80.2492081
 CORDOVA,Cordova Mall,5100 North 9th Avenue Pensacola FL 32504,32504,30.4754844,-87.2080135
 DADELAND,Dadeland Mall,7535 Dadeland Mall Miami FL 33156,33156,25.6905361,-80.312504
@@ -57,7 +57,7 @@ FLORIDAMALL,Florida Mall,8001 South Orange Blossom Trail Orlando FL 32809,32809,
 FOLSOM,Folsom Outlet Marketplace,13000 Folsom Boulevard Folsom CA 95630,95630,38.6440912,-121.1866762
 GAFFNEY,Gaffney Outlet Marketplace,1 Factory Shops Boulevard Gaffney SC 29341,29341,35.0819782,-81.7121115
 GILROY,Gilroy Premium Outlets,681 Leavesley Road Gilroy CA 95020,95020,37.0256162,-121.5636695
-GLOUCESTER,Gloucester Premium Outlets,100 Premium Outlets Drive Blackwood NJ 08012,8012,39.7830177,-75.0526272
+GLOUCESTER,Gloucester Premium Outlets,100 Premium Outlets Drive Blackwood NJ 08012,08012,39.7830177,-75.0526272
 GRANDPRAIRIE,Grand Prairie Premium Outlets,2950 West Interstate 20 Grand Prairie TX 75052,75052,32.6768066,-97.1324201
 GRAPEVINE,Grapevine Mills,3000 Grapevine Mills Parkway Grapevine TX 76051,76051,32.9659075,-97.0427868
 GREATLAKES,Great Lakes Crossing Outlets,4000 Baldwin Road Auburn Hills MI 48326,48326,42.7027241,-83.2994261
@@ -74,41 +74,41 @@ HOUSTONPO,Houston Premium Outlets,29300 Hempstead Rd Cypress TX 77433,77433,29.9
 INDIANAPO,Indiana Premium Outlets,11622 Northeast Executive Drive Edinburgh IN 46124,46124,39.3106514,-85.9602385
 INTLMARKET,International Market Place,"2330 Kalakaua Avenue, Honolulu HI 96815",96815,21.2779875,-157.826706
 INTLPLAZA,International Plaza,2223 North West Shore Boulevard Tampa FL 33607,33607,27.9654551,-82.5204017
-JACKSONPO,Jackson Premium Outlets,537 Monmouth Road Jackson NJ 08527,8527,40.163349,-74.4176626
-JERSEYSHOREPO,Jersey Shore Premium Outlets,1 Premium Outlets Boulevard Tinton Falls NJ 07753,7753,40.2257575,-74.0934381
+JACKSONPO,Jackson Premium Outlets,537 Monmouth Road Jackson NJ 08527,08527,40.163349,-74.4176626
+JERSEYSHOREPO,Jersey Shore Premium Outlets,1 Premium Outlets Boulevard Tinton Falls NJ 07753,07753,40.2257575,-74.0934381
 JOHNSONCREEK,Johnson Creek Premium Outlets,575 West Linmar Lane Johnson Creek WI 53038,53038,43.0926997,-88.7631531
 KATYMILLS,Katy Mills,5000 Katy Mills Circle Katy TX 77494,77494,29.7755219,-95.8093454
 PRUSSIA,King of Prussia,160 North Gulph Road King of Prussia PA 19406,19406,40.0881528,-75.3944026
-KITTERY,Kittery Premium Outlets,375 US Route 1 Kittery ME 03904,3904,43.1176683,-70.7280911
+KITTERY,Kittery Premium Outlets,375 US Route 1 Kittery ME 03904,03904,43.1176683,-70.7280911
 LAPLAZA,La Plaza Mall,2200 South 10th Street McAllen TX 78503,78503,26.1882845,-98.235457
 LAKELINE,Lakeline Mall,11200 Lakeline Mall Drive Cedar Park TX 78613,78613,30.4700139,-97.8072249
 LASAMERICAS,Las Americas Premium Outlets,4211 Camino de la Plaza San Diego CA 92173,92173,32.5438151,-117.0433296
 VEGASNORTHPO,Las Vegas North Premium Outlets,875 South Grand Central Parkway Las Vegas NV 89106,89106,36.1632062,-115.1587666
 VEGASSOUTHPO,Las Vegas South Premium Outlets,7400 Las Vegas Boulevard South Las Vegas NV 89123,89123,36.0546119,-115.1696012
-LEEPO,Lee Premium Outlets,17 Premium Outlets Blvd Lee MA 01238,1238,42.2948021,-73.2333056
+LEEPO,Lee Premium Outlets,17 Premium Outlets Blvd Lee MA 01238,01238,42.2948021,-73.2333056
 LEESBURG,Leesburg Premium Outlets,241 Fort Evans Road Northeast Leesburg VA 20176,20176,39.1073788,-77.5382065
 LEHIGHVAL,Lehigh Valley Mall,250 Lehigh Valley Mall Whitehall PA 18052,18052,40.6313411,-75.4810719
 LENOX,Lenox Square,3393 Peachtree Road Northeast Atlanta GA 30326,30326,33.8467259,-84.3624199
-LIBERTYTREE,Liberty Tree Mall,100 Independence Way Danvers MA 01923,1923,42.5528479,-70.9401907
+LIBERTYTREE,Liberty Tree Mall,100 Independence Way Danvers MA 01923,01923,42.5528479,-70.9401907
 LIGHTHOUSEPL,Lighthouse Place Premium Outlets,601 Wabash Street Michigan City IN 46360,46360,41.7154482,-86.9050391
-ROCKINGHAM,Mall at Rockingham Park,99 Rockingham Park Boulevard Salem NH 03079,3079,42.767915,-71.2313648
+ROCKINGHAM,Mall at Rockingham Park,99 Rockingham Park Boulevard Salem NH 03079,03079,42.767915,-71.2313648
 MOFGEORGIA,Mall of Georgia,3333 Buford Drive Buford GA 30519,30519,34.0662711,-83.9842746
 MCCAINMALL,McCain Mall,3929 McCain Boulevard N. Little Rock AR 72116,72116,34.7913644,-92.2282605
 MEADOWOOD,Meadowood Mall,5000 #1 Meadowood Mall Circle Reno NV 89502,89502,39.4715327,-119.7830083
-MENLOPARK,Menlo Park Mall,100 Menlo Park Edison NJ 08837,8837,40.5478256,-74.3354653
-MERRIMACKPO,Merrimack Premium Outlets,80 Premium Outlets Boulevard Merrimack NH 03054,3054,42.8264314,-71.4992254
+MENLOPARK,Menlo Park Mall,100 Menlo Park Edison NJ 08837,08837,40.5478256,-74.3354653
+MERRIMACKPO,Merrimack Premium Outlets,80 Premium Outlets Boulevard Merrimack NH 03054,03054,42.8264314,-71.4992254
 MIAMIINTL,Miami International Mall,1455 Northwest 107th Avenue Miami FL 33172,33172,25.7872507,-80.364821
 MIDLAND,Midland Park Mall,4511 North Midkiff Drive Midland TX 79705,79705,32.0301564,-102.1316508
 MILLERHILL,Miller Hill Mall,1600 Miller Trunk Highway Duluth MN 55811,55811,46.8055121,-92.1586125
 NAPAPO,Napa Premium Outlets,629 Factory Stores Drive Napa CA 94558,94558,38.2948329,-122.3027269
-NEWPORTCTR,Newport Centre,30 Mall Drive West Jersey City NJ 07310,7310,40.7268406,-74.0379931
+NEWPORTCTR,Newport Centre,30 Mall Drive West Jersey City NJ 07310,07310,40.7268406,-74.0379931
 NORFOLKPO,Norfolk Premium Outlets,1600 Premium Outlets Boulevard Norfolk VA 23502,23502,36.8821267,-76.200199
 NORTHBEND,North Bend Premium Outlets,461 South Fork Avenue Southwest North Bend WA 98045,98045,47.4919834,-121.794823
 NORTHEASTMALL,North East Mall,1101 Melbourne Street Hurst TX 76053,76053,32.8307635,-97.1994333
 NORTHGEORGIA,North Georgia Premium Outlets,800 Highway 400 South Dawsonville GA 30534,30534,34.3567585,-84.0485427
 NORTHGATE,Northgate Station,401 Northeast Northgate Way Seattle WA 98125,98125,47.7080446,-122.3263688
-NORTHSHORE,Northshore Mall,210 Andover Street Peabody MA 01960,1960,42.5414196,-70.9445901
-OCEANCOUNTY,Ocean County Mall,1201 Hooper Avenue Toms River NJ 08753,8753,39.9798255,-74.1817029
+NORTHSHORE,Northshore Mall,210 Andover Street Peabody MA 01960,01960,42.5414196,-70.9445901
+OCEANCOUNTY,Ocean County Mall,1201 Hooper Avenue Toms River NJ 08753,08753,39.9798255,-74.1817029
 ONTARIOMILLS,Ontario Mills,One Mills Circle Ontario CA 91764,91764,34.0708434,-117.5519097
 OPRYMILLS,Opry Mills,433 Opry Mills Drive Nashville TN 37214,37214,36.2029647,-86.6922661
 ORLANDSQR,Orland Square,288 Orland Square Orland Park IL 60462,60462,41.6183779,-87.8525967
@@ -120,7 +120,7 @@ OXFORD,Oxford Valley Mall,2300 East Lincoln Highway Langhorne PA 19047,19047,40.
 PALMBEACH,Palm Beach Gardens,3101 PGA Boulevard Palm Beach Gardens FL 33410,33410,26.8479904,-80.0887611
 PENNSQUARE,Penn Square Malls,1901 Northwest Expressway Oklahoma City OK 73118,73118,35.5248002,-97.5444491
 PETALUMA,Petaluma Village Premium Outlets,2200 Petaluma Boulevard North Petaluma CA 94952,94952,38.2567191,-122.6493498
-PHEASANTLANE,Pheasant Lane Mall,310 Daniel Webster Highway Nashua NH 03060,3060,42.7010418,-71.4369572
+PHEASANTLANE,Pheasant Lane Mall,310 Daniel Webster Highway Nashua NH 03060,03060,42.7010418,-71.4369572
 PHILADELPHIA,Philadelphia Premium Outlets,18 West Lightcap Road Limerick PA 19464,19464,40.2372552,-75.5715575
 PHIPPSPLAZA,Phipps Plaza,3500 Peachtree Road Northeast Atlanta GA 30326,30326,33.8528035,-84.3622556
 PHOENIXPO,Phoenix Premium Outlets,4976 Premium Outlets Way Chandler AZ 85226,85226,33.2869949,-111.9735812
@@ -129,10 +129,10 @@ PISMOBEACH,Pismo Beach Premium Outlets,333 Five Cities Drive Pismo Beach CA 9344
 PLEASANTPRAIRIE,Pleasant Prairie Premium Outlets,11211 120th Avenue Pleasant Prairie WI 53158,53158,42.5180341,-87.9488737
 POTOMACMILLS,Potomac Mills,2700 Potomac Mills Circle Woodbridge VA 22192,22192,38.6431929,-77.2965242
 PRIENLAKE,Prien Lake Mall,496 West Prien Lake Road Lake Charles LA 70601,70601,30.2005895,-93.2253714
-QUAKERBRIDGE,Quaker Bridge Mall,150 Quaker Bridge Mall Lawrenceville NJ 08648,8648,40.2908179,-74.6813247
+QUAKERBRIDGE,Quaker Bridge Mall,150 Quaker Bridge Mall Lawrenceville NJ 08648,08648,40.2908179,-74.6813247
 QUEENSTOWN,Queenstown Premium Outlets,441 Outlet Center Drive Queenstown MD 21658,21658,38.9839793,-76.1587646
 RIOGRANDEPO,Rio Grande Valley Premium Outlets,"5001 E Expressway 83, Mercedes TX 78570, USA",78570,26.1621435,-97.8880775
-ROCKAWAY,Rockaway Townsquare,301 Mount Hope Avenue Rockaway NJ 07866,7866,40.9071951,-74.5540177
+ROCKAWAY,Rockaway Townsquare,301 Mount Hope Avenue Rockaway NJ 07866,07866,40.9071951,-74.5540177
 ROOSEVELT,Roosevelt Field,630 Old Country Road Garden City NY 11530,11530,40.7383205,-73.61396
 ROSSPARK,Ross Park Mall,1000 Ross Park Mall Drive Pittsburgh PA 15237,15237,40.5438668,-80.0074045
 ROUNDROCK,Round Rock Premium Outlets,4401 North IH-35 Round Rock TX 78664,78664,30.5635656,-97.6902118
@@ -145,7 +145,7 @@ SILVERSANDS,Silver Sand Premium Outlets,10562 Emerald Coast Parkway Destin FL 32
 SIMONTOWER,Simon Tower,225 West Washington Street Indianapolis IN 46204,46204,39.7667659,-86.1623792
 SMITHHAVEN,Smith Haven Mall,313 Smith Haven Mall Lake Grove NY 11755,11755,40.863242,-73.1294434
 SOUTHHILLSV,South Hills Village,301 South Hills Village Pittsburgh PA 15241,15241,40.3423053,-80.0552469
-SSHOREPLAZA,South Shore Plaza,250 Granite Street Braintree MA 02184,2184,42.221735,-71.0228696
+SSHOREPLAZA,South Shore Plaza,250 Granite Street Braintree MA 02184,02184,42.221735,-71.0228696
 SOUTHDALE,Southdale Center,10 Southdale Center Edina MN 55435,55435,44.8808535,-93.3253561
 SOUTHPARK,Southpark,4400 Sharon Road Charlotte NC 28211,28211,35.1518906,-80.8304507
 STAUGUSTINE,St. Augustine Premium Outlets,2700 State Road 16 St. Augustine FL 32092,32092,29.9219929,-81.4155071
@@ -167,16 +167,16 @@ SHOPSATCAESARS,The Forum Shops at Caesars,3500 Las Vegas Boulevard S Las Vegas N
 GARDENSONELPASO,The Gardens on El Paseo,"73545 El Paseo, Palm Desert, CA 92260",92260,33.7194358,-116.3813019
 GREENHILLS,The Mall at Green Hills,"2126 Abbott Martin Road, Nashville, TN 37215",37215,36.1076459,-86.8163855
 MALLATMILLENIA,The Mall at Millenia,"4200 Conroy Road, Orlando, FL 32839",32839,28.4858595,-81.4320188
-SHORTHILLS,The Mall at Short Hills,1200 Morris Turnpike Short Hills NJ 07078,7078,40.7408743,-74.3642457
+SHORTHILLS,The Mall at Short Hills,1200 Morris Turnpike Short Hills NJ 07078,07078,40.7408743,-74.3642457
 UNIVERSITYTOWNCENTER,The Mall at University Town Center,140 University Town Center Drive Sarasota FL 34243,34243,27.3861364,-82.4519187
-MOFNEWHAMPSHIRE,The Mall of New Hampshire,1500 South Willow Street Manchester NH 03103,3103,42.9554768,-71.4325338
-JERSEYGARDENS,The Mills at Jersey Gardens,651 Kapkowski Road Elizabeth NJ 07201,7201,40.6599534,-74.1710692
+MOFNEWHAMPSHIRE,The Mall of New Hampshire,1500 South Willow Street Manchester NH 03103,03103,42.9554768,-71.4325338
+JERSEYGARDENS,The Mills at Jersey Gardens,651 Kapkowski Road Elizabeth NJ 07201,07201,40.6599534,-74.1710692
 OUTLETSATORANGE,The Outlets at Orange,20 City Boulevard West Orange CA 92868,92868,33.7826672,-117.8929285
-CHESTNUTHILL,The Shops at Chestnut Hill,199 Boylston Street Chestnut Hill MA 02467,2467,42.3215125,-71.1756718
+CHESTNUTHILL,The Shops at Chestnut Hill,199 Boylston Street Chestnut Hill MA 02467,02467,42.3215125,-71.1756718
 CLEARFORK,The Shops at Clearfork,5188 Monahans Avenue Fort Worth TX 76109,76109,32.7101703,-97.4005879
 SHOPSCRYSTALS,The Shops at Crystals,3720 South Las Vegas Boulevard Las Vegas NV 89158,89158,36.1083142,-115.1740911
 MISSIONVIEJO,The Shops at Mission Viejo,555 The Shops at Mission Viejo Mission Viejo CA 92691,92691,33.5587351,-117.6691519
-RIVERSIDE,The Shops at Riverside,One Riverside Square Hackensack NJ 07601,7601,40.905811,-74.0317063
+RIVERSIDE,The Shops at Riverside,One Riverside Square Hackensack NJ 07601,07601,40.905811,-74.0317063
 WESTCHESTER,The Westchester,125 Westchester Avenue White Plains NY 10601,10601,41.0312752,-73.7591855
 TIPPECANOEMALL,Tippecanoe Mall,2415 Sagamore Parkway South Lafayette IN 47905,47905,40.3915437,-86.850402
 TOWNBOCARATON,Town Center at Boca Raton,6000 Glades Road Boca Raton FL 33431,33431,26.364967,-80.1325963
@@ -195,7 +195,7 @@ WALTWHITMAN,Walt Whitman Shops,160 Walt Whitman Road Huntington Station NY 11746
 WATERLOOPO,Waterloo Premium Outlets,655 Route 318 Waterloo NY 13165,13165,42.9555461,-76.921395
 WATERSIDESHOPS,Waterside Shops,5415 Tamiami Trl North Naples FL 34108,34108,26.2137831,-81.8026186
 WESTTOWN,West Town Mall,7600 Kingston Pike Knoxville TN 37919,37919,35.9244853,-84.0383972
-WESTFAR<S,Westfarms,1500 New Britain Avenue West Hartford CT 06110,6110,41.7241034,-72.7621046
+WESTFAR<S,Westfarms,1500 New Britain Avenue West Hartford CT 06110,06110,41.7241034,-72.7621046
 WHITEOAKS,White Oaks Mall,2501 Wabash Avenue Springfield IL 62704,62704,39.7674788,-89.7035535
 WILLIAMSBURGPO,Williamsburg Premium Outlets,5715-62A Richmond Road Williamsburg VA 23188,23188,37.2854381,-76.722488
 WOLFCHASE,Wolfchase Galleria,2760 North Germantown Parkway Memphis TN 38133,38133,35.200892,-89.7877063
@@ -203,4 +203,4 @@ WOODBURNPO,Woodburn Premium Outlets,1001 Arney Road Woodburn OR 97071,97071,45.1
 WOODBURY,Woodbury Common Premium Outlets,498 Red Apple Court Central Valley NY 10917,10917,41.3162964,-74.1257144
 WOODFIELDM,Woodfield Mall,5 Woodfield Mall Schaumburg IL 60173,60173,42.0457591,-88.0373778
 WOODLANDHILLS,Woodland Hills Mall,7021 South Memorial Drive Tulsa OK 74133,74133,36.0637737,-95.8818853
-WRENTHAMVIL,Wrentham Village Premium Outlets,One Premium Outlets Boulevard Wrentham MA 02093,2093,42.0380222,-71.3494019
+WRENTHAMVIL,Wrentham Village Premium Outlets,One Premium Outlets Boulevard Wrentham MA 02093,02093,42.0380222,-71.3494019
