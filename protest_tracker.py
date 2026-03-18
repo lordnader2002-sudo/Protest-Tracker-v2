@@ -122,10 +122,10 @@ COLUMNS = [
     ("Event Location",          "event_location",   44),
     ("Distance (mi)",           "distance_mi",      14),
     ("Event URL",               "event_url",        12),
-    ("Notes",                   "notes",            30),
     ("Is New?",                 "is_new",            8),
     ("Duplicate?",              "is_duplicate",      10),
     ("Recurring?",              "is_recurring",      10),
+    ("Notes",                   "notes",            30),
 ]
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
