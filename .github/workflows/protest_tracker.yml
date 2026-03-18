@@ -23,7 +23,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install requests openpyxl
+        run: pip install requests openpyxl tqdm
 
       - name: Run Protest Tracker
         env:

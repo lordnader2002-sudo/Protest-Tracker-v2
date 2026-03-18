@@ -26,6 +26,12 @@ import time
 from datetime import datetime, timedelta, timezone
 
 import requests
+try:
+    from tqdm import tqdm as _tqdm
+    _HAS_TQDM = True
+except ImportError:
+    _HAS_TQDM = False
+
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
@@ -360,20 +366,34 @@ def collect_events(
     # ── First pass ────────────────────────────────────────────────────────────
     retry_queue: list[list[dict]] = []   # clusters that hit 429 on first pass
 
-    for idx, cluster in enumerate(clusters, 1):
+    bar = (_tqdm(clusters, unit="cluster", dynamic_ncols=True, colour="cyan")
+           if _HAS_TQDM else None)
+    cluster_iter = bar if bar is not None else clusters
+
+    for idx, cluster in enumerate(cluster_iter, 1):
         zip_code, query_radius = cluster_query_params(cluster)
         names = ", ".join(p["name"] for p in cluster[:3])
-        suffix = f" +{len(cluster)-3} more" if len(cluster) > 3 else ""
-        print(f"  [{idx:>3}/{len(clusters)}] zip={zip_code}  r={query_radius}mi  "
-              f"({names}{suffix})")
+        suffix = f" +{len(cluster) - 3} more" if len(cluster) > 3 else ""
+        label = f"zip={zip_code} r={query_radius}mi  {names}{suffix}"
+
+        if bar is not None:
+            bar.set_description(label)
+        else:
+            print(f"  [{idx:>3}/{len(clusters)}] {label}")
 
         try:
             events = fetch_events_for_zip(zip_code, query_radius, now_ts, end_30d)
-            print(f"           → {len(events)} event(s) returned")
+            if bar is not None:
+                bar.set_postfix(events=len(events), refresh=True)
+            else:
+                print(f"           → {len(events)} event(s) returned")
             process_events(events, cluster)
         except RateLimitError:
-            print(f"    [429] Rate-limited — queued for retry pass.", file=sys.stderr)
+            print(f"\n    [429] Rate-limited — queued for retry pass.", file=sys.stderr)
             retry_queue.append(cluster)
+
+    if bar is not None:
+        bar.close()
 
     # ── Retry pass (60 s head-start, then 5 s between attempts) ─────────────
     if retry_queue:
