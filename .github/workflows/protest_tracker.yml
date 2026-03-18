@@ -37,11 +37,19 @@ jobs:
       # ── Regen path: download the latest saved cache ────────────────────────
       - name: Download latest data cache (regen only)
         if: github.event.inputs.mode == 'regen'
+        id: download-cache
         uses: dawidd6/action-download-artifact@v6
         with:
           name: protest-tracker-cache
           workflow: protest_tracker.yml
           workflow_conclusion: success
+          if_no_artifact_found: warn
+
+      - name: Abort if no cache exists yet
+        if: github.event.inputs.mode == 'regen' && steps.download-cache.outputs.found_artifact == 'false'
+        run: |
+          echo "::error::No cache artifact found. Run the workflow once in 'full' mode first to create it, then use 'regen'."
+          exit 1
 
       - name: Regen Excel from cache
         if: github.event.inputs.mode == 'regen'
