@@ -839,6 +839,37 @@ def build_excel(general_rows: list[dict], no_kings_rows: list[dict],
     print(f"\n  ✓ Excel workbook saved → {output_path}")
 
 
+def build_dashboard_json(general_rows: list[dict], no_kings_rows: list[dict],
+                          output_path: str = "dashboard_data.json") -> None:
+    import json as _json
+    now = datetime.now()
+    end_3d  = (now + timedelta(days=DAYS_GENERAL)).strftime("%B %d, %Y")
+    end_30d = (now + timedelta(days=DAYS_NO_KINGS)).strftime("%B %d, %Y")
+
+    def _clean(rows):
+        out = []
+        for r in sorted(rows, key=lambda x: x.get("distance_mi", 9999)):
+            out.append({k: r.get(k, "") for _, k, _ in COLUMNS})
+        return out
+
+    payload = {
+        "generated": now.strftime("%B %d, %Y at %I:%M %p EST"),
+        "general": {
+            "title": "3-Day Window",
+            "subtitle": f"{now.strftime('%B %d, %Y')}  through  {end_3d}  •  Within {SEARCH_RADIUS_MI} miles",
+            "rows": _clean(general_rows),
+        },
+        "no_kings": {
+            "title": "No Kings — 30-Day Window",
+            "subtitle": f"{now.strftime('%B %d, %Y')}  through  {end_30d}  •  Within {SEARCH_RADIUS_MI} miles",
+            "rows": _clean(no_kings_rows),
+        },
+    }
+    with open(output_path, "w") as f:
+        _json.dump(payload, f)
+    print(f"  ✓ Dashboard JSON saved  → {output_path}")
+
+
 # ── Entry point ────────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -917,6 +948,7 @@ def main() -> None:
 
     print("\nBuilding Excel workbook …")
     build_excel(general_rows, no_kings_rows, args.output)
+    build_dashboard_json(general_rows, no_kings_rows)
     print("Done.\n")
 
 
