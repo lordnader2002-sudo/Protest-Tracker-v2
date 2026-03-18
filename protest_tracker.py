@@ -126,6 +126,7 @@ COLUMNS = [
     ("Duplicate?",              "is_duplicate",      10),
     ("Recurring?",              "is_recurring",      10),
     ("Notes",                   "notes",            30),
+    ("First Seen",              "first_seen",       12),
 ]
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -296,6 +297,12 @@ def expand_event(event: dict, prop: dict, stats: dict | None = None) -> list[dic
     loc_str    = event_location_str(loc)
 
     eid = event.get("id")
+    created_unix = event.get("created_date")
+    first_seen = (
+        datetime.fromtimestamp(created_unix, tz=timezone.utc)
+        .astimezone(_EASTERN).strftime("%b %d, %Y")
+        if created_unix else ""
+    )
     rows = []
     for ts in event.get("timeslots") or []:
         start_unix = ts.get("start_date")
@@ -314,6 +321,7 @@ def expand_event(event: dict, prop: dict, stats: dict | None = None) -> list[dic
             "event_location": loc_str,
             "distance_mi":    round(dist, 2),
             "event_url":      browser_url,
+            "first_seen":     first_seen,
         })
     return rows
 

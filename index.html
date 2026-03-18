@@ -259,8 +259,10 @@
               font-weight: 500; border-bottom: 1px solid currentColor; opacity: .85; }
   td.link a:hover { opacity: 1; }
   td.notes { color: var(--fg-muted); font-style: italic; }
-  td.flag  { text-align: center; font-size: 11px; font-weight: 700;
-             color: var(--flag-yes-color); letter-spacing: .2px; }
+  td.flag  { text-align: center; }
+  td.flag-no { color: var(--fg-muted); font-size: 11px; }
+  td.firstseen { font-size: 11px; white-space: nowrap; color: var(--fg-muted); }
+  tr.row-new td { font-weight: 700; }
 
   /* ── Distance bands ────────────────────────────────────────────────── */
   .band-red      { background: var(--band-red);      }
@@ -442,9 +444,10 @@ const COLS = [
   { key: "distance_mi",    label: "Distance (mi)",     cls: "dist" },
   { key: "event_url",      label: "URL",               cls: "link" },
   { key: "is_new",         label: "New?",              cls: "flag" },
-  { key: "is_duplicate",   label: "Duplicate?",        cls: "flag" },
-  { key: "is_recurring",   label: "Recurring?",        cls: "flag" },
+  { key: "is_duplicate",   label: "Dup?",              cls: "flag" },
+  { key: "is_recurring",   label: "Recur?",            cls: "flag" },
   { key: "notes",          label: "Notes",             cls: "notes" },
+  { key: "first_seen",     label: "First Seen",        cls: "firstseen" },
 ];
 
 const FLAG_KEYS = new Set(["is_new","is_duplicate","is_recurring"]);
@@ -529,6 +532,7 @@ function render(tab) {
   tbody.innerHTML = "";
   rows.forEach(r => {
     const tr = document.createElement("tr");
+    if (String(r.is_new ?? "").toLowerCase() === "yes") tr.classList.add("row-new");
     const dist = parseFloat(r.distance_mi) || 0;
     COLS.forEach(c => {
       const td = document.createElement("td");
@@ -537,6 +541,14 @@ function render(tab) {
         td.innerHTML = `<a href="${escHtml(r[c.key])}" target="_blank" rel="noopener">Link ↗</a>`;
       } else if (c.key === "distance_mi") {
         td.textContent = dist ? dist.toFixed(2) : "";
+      } else if (FLAG_KEYS.has(c.key)) {
+        const yes = String(r[c.key] ?? "").toLowerCase() === "yes";
+        if (yes) {
+          td.innerHTML = `<span class="flag-pill">Yes</span>`;
+        } else {
+          td.textContent = "No";
+          td.classList.add("flag-no");
+        }
       } else {
         td.textContent = r[c.key] ?? "";
       }
