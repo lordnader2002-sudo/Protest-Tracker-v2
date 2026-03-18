@@ -5,12 +5,21 @@ on:
   schedule:
     - cron: "0 12 * * *"
 
-  # Also allow manual runs from the Actions tab
+  # Manual runs from the Actions tab
   workflow_dispatch:
+    inputs:
+      mode:
+        description: "Run mode"
+        required: true
+        default: "full"
+        type: choice
+        options:
+          - full        # query Mobilize API and build report
+          - regen       # rebuild Excel from last cached data (instant)
 
 jobs:
   run-tracker:
-    name: Fetch Events & Generate Report
+    name: ${{ github.event.inputs.mode == 'regen' && 'Regen Excel from Cache' || 'Fetch Events & Generate Report' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -23,15 +32,43 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install requests openpyxl tqdm
+        run: pip install requests openpyxl tqdm zipcodes
 
-      - name: Run Protest Tracker
+      # ── Regen path: download the latest saved cache ────────────────────────
+      - name: Download latest data cache (regen only)
+        if: github.event.inputs.mode == 'regen'
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          name: protest-tracker-cache
+          workflow: protest_tracker.yml
+          workflow_conclusion: success
+
+      - name: Regen Excel from cache
+        if: github.event.inputs.mode == 'regen'
+        run: |
+          python3 protest_tracker.py \
+            --regen \
+            --output "protest_tracker_$(date +'%Y-%m-%d').xlsx"
+
+      # ── Full run path ──────────────────────────────────────────────────────
+      - name: Run Protest Tracker (full)
+        if: github.event.inputs.mode != 'regen'
         env:
           MOBILIZE_API_KEY: ${{ secrets.MOBILIZE_API_KEY }}
         run: |
           python3 protest_tracker.py \
             --output "protest_tracker_$(date +'%Y-%m-%d').xlsx"
 
+      - name: Save data cache artifact (full run only)
+        if: github.event.inputs.mode != 'regen'
+        uses: actions/upload-artifact@v4
+        with:
+          name: protest-tracker-cache
+          path: protest_tracker_cache.json
+          retention-days: 7
+          overwrite: true
+
+      # ── Always upload the Excel report ────────────────────────────────────
       - name: Upload report as artifact
         uses: actions/upload-artifact@v4
         with:
