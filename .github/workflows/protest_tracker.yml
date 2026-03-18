@@ -99,6 +99,8 @@ jobs:
           mkdir -p _site
           cp index.html _site/
           cp dashboard_data.json _site/
+          # Copy Excel with a fixed name so the dashboard download link works
+          cp protest_tracker_*.xlsx _site/protest_tracker_latest.xlsx 2>/dev/null || true
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4

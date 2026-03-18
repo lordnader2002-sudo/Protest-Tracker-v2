@@ -81,14 +81,19 @@
     box-shadow: 0 2px 8px rgba(0,0,0,.25);
   }
   header h1 { font-size: 18px; font-weight: 700; letter-spacing: .3px; }
-  header span { font-size: 11px; opacity: .8; }
+  header span { font-size: 11px; opacity: .8; margin-right: 4px; }
 
-  #theme-toggle {
-    background: var(--toggle-bg); border: 1px solid var(--toggle-border);
-    color: #fff; border-radius: 4px; padding: 4px 12px;
-    font-size: 11px; cursor: pointer; margin-left: auto; white-space: nowrap;
+  .header-actions {
+    display: flex; align-items: center; gap: 8px; margin-left: auto;
   }
-  #theme-toggle:hover { background: rgba(255,255,255,.25); }
+  #theme-toggle, #dl-excel {
+    border: 1px solid var(--toggle-border);
+    color: #fff; border-radius: 4px; padding: 4px 12px;
+    font-size: 11px; cursor: pointer; white-space: nowrap; text-decoration: none;
+  }
+  #theme-toggle { background: var(--toggle-bg); }
+  #dl-excel     { background: rgba(255,255,255,.1); }
+  #theme-toggle:hover, #dl-excel:hover { background: rgba(255,255,255,.25); }
 
   /* ── Tabs ─────────────────────────────────────────────────────── */
   .tabs { display: flex; background: var(--tabs-bg); padding: 0 24px; gap: 2px; }
@@ -189,7 +194,10 @@
 <header>
   <h1>Protest Tracker</h1>
   <span id="gen-time"></span>
-  <button id="theme-toggle" onclick="toggleTheme()">Dark Mode</button>
+  <div class="header-actions">
+    <a id="dl-excel" href="protest_tracker_latest.xlsx" download>Download Excel</a>
+    <button id="theme-toggle" onclick="toggleTheme()">Dark Mode</button>
+  </div>
 </header>
 
 <div class="tabs">
@@ -218,9 +226,16 @@
     </table>
   </div>
   <div class="legend">
+    <strong style="font-size:11px;color:var(--legend-color);align-self:center">Distance:</strong>
     <div class="legend-item"><div class="swatch band-red"></div> &lt; 1 mile</div>
     <div class="legend-item"><div class="swatch band-amber"></div> 1–2 miles</div>
     <div class="legend-item"><div class="swatch band-green"></div> &gt; 2 miles</div>
+    <span style="margin-left:12px;border-left:1px solid var(--border);padding-left:12px">
+      <strong style="font-size:11px;color:var(--legend-color)">Flags:</strong>
+    </span>
+    <div class="legend-item"><span style="color:var(--flag-yes-color);font-weight:700">Yes</span>&nbsp;= New — not seen in previous run</div>
+    <div class="legend-item"><span style="color:var(--flag-yes-color);font-weight:700">Yes</span>&nbsp;= Duplicate — same event near 2+ properties</div>
+    <div class="legend-item"><span style="color:var(--flag-yes-color);font-weight:700">Yes</span>&nbsp;= Recurring — event has multiple time slots</div>
   </div>
 </div>
 
@@ -244,9 +259,16 @@
     </table>
   </div>
   <div class="legend">
+    <strong style="font-size:11px;color:var(--legend-color);align-self:center">Distance:</strong>
     <div class="legend-item"><div class="swatch band-red-nk"></div> &lt; 1 mile</div>
     <div class="legend-item"><div class="swatch band-amber-nk"></div> 1–2 miles</div>
     <div class="legend-item"><div class="swatch band-green-nk"></div> &gt; 2 miles</div>
+    <span style="margin-left:12px;border-left:1px solid var(--border);padding-left:12px">
+      <strong style="font-size:11px;color:var(--legend-color)">Flags:</strong>
+    </span>
+    <div class="legend-item"><span style="color:var(--flag-yes-color);font-weight:700">Yes</span>&nbsp;= New — not seen in previous run</div>
+    <div class="legend-item"><span style="color:var(--flag-yes-color);font-weight:700">Yes</span>&nbsp;= Duplicate — same event near 2+ properties</div>
+    <div class="legend-item"><span style="color:var(--flag-yes-color);font-weight:700">Yes</span>&nbsp;= Recurring — event has multiple time slots</div>
   </div>
 </div>
 

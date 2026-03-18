@@ -692,7 +692,7 @@ def write_data_sheet(ws, rows: list[dict],
 
         # ── Color legend ──
         legend_row = 4 + len(rows) + 2
-        legend_items = [
+        distance_items = [
             ("  Within 1 mile",    FILL_RED),
             ("  1 – 2 miles",      FILL_AMBER),
             ("  Beyond 2 miles",   FILL_GREEN),
@@ -702,13 +702,34 @@ def write_data_sheet(ws, rows: list[dict],
               font  = Font(name="Calibri", bold=True, size=9, color="2C3E50"),
               align = Alignment(vertical="center"))
         ws.row_dimensions[legend_row].height = 14
-        for j, (label, fill) in enumerate(legend_items):
+        for j, (label, fill) in enumerate(distance_items):
             r = legend_row + 1 + j
             swatch = ws.cell(row=r, column=1)
             swatch.fill = fill
             swatch.border = _group_border(True, True, True, True)
             ws.row_dimensions[r].height = 14
             _cell(ws, r, 2, label,
+                  font  = Font(name="Calibri", size=9),
+                  align = Alignment(vertical="center"))
+
+        # ── Flag legend ──
+        flag_row = legend_row + len(distance_items) + 2
+        _cell(ws, flag_row, 1, "Flag Columns:",
+              font  = Font(name="Calibri", bold=True, size=9, color="2C3E50"),
+              align = Alignment(vertical="center"))
+        ws.row_dimensions[flag_row].height = 14
+        flag_items = [
+            ("Is New?",      "Event ID not seen in the previous run's data"),
+            ("Duplicate?",   "Same event appears near 2+ tracked properties this run"),
+            ("Recurring?",   "Same event has 2+ distinct time slots this run"),
+        ]
+        for j, (col_name, description) in enumerate(flag_items):
+            r = flag_row + 1 + j
+            ws.row_dimensions[r].height = 14
+            _cell(ws, r, 1, col_name,
+                  font  = Font(name="Calibri", bold=True, size=9),
+                  align = Alignment(vertical="center"))
+            _cell(ws, r, 2, description,
                   font  = Font(name="Calibri", size=9),
                   align = Alignment(vertical="center"))
 
