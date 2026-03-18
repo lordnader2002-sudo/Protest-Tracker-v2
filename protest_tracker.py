@@ -24,6 +24,9 @@ import os
 import sys
 import time
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
+
+_EASTERN = ZoneInfo("America/New_York")
 
 import requests
 try:
@@ -80,6 +83,12 @@ ALT_BLUE   = PatternFill("solid", fgColor="DCE6F1")   # pale blue   (even data r
 ALT_PURPLE = PatternFill("solid", fgColor="E8DEFF")   # pale purple (even No Kings rows)
 WHITE_FILL = PatternFill("solid", fgColor="FFFFFF")
 
+# Distance-based row shading
+FILL_RED   = PatternFill("solid", fgColor="FFCCCC")   # < 1 mile
+FILL_AMBER = PatternFill("solid", fgColor="FFE8A0")   # 1–2 miles
+FILL_GREEN = PatternFill("solid", fgColor="CCFFCC")   # > 2 miles
+FILL_NOTES = PatternFill("solid", fgColor="F0F0F0")   # Notes column
+
 THIN = Border(
     left   = Side(style="thin", color="B8CCE4"),
     right  = Side(style="thin", color="B8CCE4"),
@@ -87,19 +96,32 @@ THIN = Border(
     bottom = Side(style="thin", color="B8CCE4"),
 )
 
+_THICK_SIDE = Side(style="medium", color="2C3E50")
+_THIN_INNER = Side(style="thin",   color="AAAAAA")
+
+
+def _group_border(top_edge: bool, bot_edge: bool,
+                  left_edge: bool, right_edge: bool) -> Border:
+    """Thick on group perimeter, light-gray inside."""
+    return Border(
+        top    = _THICK_SIDE if top_edge   else _THIN_INNER,
+        bottom = _THICK_SIDE if bot_edge   else _THIN_INNER,
+        left   = _THICK_SIDE if left_edge  else _THIN_INNER,
+        right  = _THICK_SIDE if right_edge else _THIN_INNER,
+    )
+
 # ── Sheet column definitions ───────────────────────────────────────────────────
 
 COLUMNS = [
     # (header label,            row-dict key,      col width)
-    ("Property ID",             "property_id",      14),
     ("Property Name",           "property_name",    28),
-    ("Property Address",        "property_addr",    36),
     ("Event Title",             "event_title",      42),
     ("Event Type",              "event_type",       16),
-    ("Date & Time (UTC)",       "event_date",       22),
+    ("Date & Time (EST)",       "event_date",       22),
     ("Event Location",          "event_location",   44),
     ("Distance (mi)",           "distance_mi",      14),
-    ("Event URL",               "event_url",        50),
+    ("Event URL",               "event_url",        12),
+    ("Notes",                   "notes",            30),
 ]
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -281,7 +303,7 @@ def expand_event(event: dict, prop: dict, stats: dict | None = None) -> list[dic
             "property_addr":  prop["address"],
             "event_title":    title,
             "event_type":     etype,
-            "event_date":     dt_utc.strftime("%b %d, %Y  %I:%M %p UTC"),
+            "event_date":     dt_utc.astimezone(_EASTERN).strftime("%b %d, %Y  %H:%M EST"),
             "event_dt_sort":  dt_utc,
             "event_location": loc_str,
             "distance_mi":    round(dist, 2),
@@ -512,6 +534,14 @@ def write_data_sheet(ws, rows: list[dict],
     ws.sheet_view.showGridLines = False
     num_cols = len(COLUMNS)
     last_col = get_column_letter(num_cols)
+    notes_col_idx = next((i + 1 for i, (_, k, _) in enumerate(COLUMNS)
+                          if k == "notes"), None)
+
+    # Sort closest → furthest
+    rows = sorted(rows, key=lambda r: r.get("distance_mi", 9999))
+
+    def _dist_band(d):
+        return "red" if d < 1.0 else ("amber" if d < 2.0 else "green")
 
     # ── Row 1: Title ──
     ws.merge_cells(f"A1:{last_col}1")
@@ -520,7 +550,7 @@ def write_data_sheet(ws, rows: list[dict],
           fill   = title_fill,
           align  = Alignment(horizontal="center", vertical="center"),
           border = THIN)
-    ws.row_dimensions[1].height = 34
+    ws.row_dimensions[1].height = 36
 
     # ── Row 2: Subtitle ──
     ws.merge_cells(f"A2:{last_col}2")
@@ -529,17 +559,21 @@ def write_data_sheet(ws, rows: list[dict],
           fill   = title_fill,
           align  = Alignment(horizontal="center", vertical="center"),
           border = THIN)
-    ws.row_dimensions[2].height = 16
+    ws.row_dimensions[2].height = 18
 
-    # ── Row 3: Column headers ──
-    for col_idx, (label, _, _) in enumerate(COLUMNS, 1):
+    # ── Row 3: Column headers + auto-filter ──
+    for col_idx, (label, key, _) in enumerate(COLUMNS, 1):
+        is_notes_hdr = (key == "notes")
         _cell(ws, 3, col_idx, label,
-              font   = Font(name="Calibri", bold=True, size=11, color="FFFFFF"),
+              font   = Font(name="Calibri", bold=True, size=11,
+                            color="FFFFFF" if not is_notes_hdr else "FFFFFF",
+                            italic=is_notes_hdr),
               fill   = col_hdr_fill,
               align  = Alignment(horizontal="center", vertical="center", wrap_text=True),
               border = THIN)
-    ws.row_dimensions[3].height = 22
+    ws.row_dimensions[3].height = 24
     ws.freeze_panes = "A4"
+    ws.auto_filter.ref = f"A3:{last_col}{max(4, 3 + len(rows))}"
 
     # ── Data rows ──
     if not rows:
@@ -549,34 +583,88 @@ def write_data_sheet(ws, rows: list[dict],
               align = Alignment(horizontal="center", vertical="center"))
         ws.row_dimensions[4].height = 24
     else:
-        for row_idx, row in enumerate(rows, start=4):
-            is_even = (row_idx % 2 == 0)
-            row_fill = alt_fill if is_even else WHITE_FILL
-            ws.row_dimensions[row_idx].height = 26
+        col_widths = [len(label) for label, _, _ in COLUMNS]
+
+        for i, row in enumerate(rows):
+            row_idx = i + 4
+            dist = row.get("distance_mi", 9999)
+            band = _dist_band(dist)
+
+            # Group edge detection
+            prev_band = _dist_band(rows[i - 1].get("distance_mi", 9999)) if i > 0 else None
+            next_band = _dist_band(rows[i + 1].get("distance_mi", 9999)) if i < len(rows) - 1 else None
+            top_edge = (band != prev_band)
+            bot_edge = (band != next_band)
+
+            row_fill = {"red": FILL_RED, "amber": FILL_AMBER, "green": FILL_GREEN}[band]
+            ws.row_dimensions[row_idx].height = 28
 
             for col_idx, (_, key, _) in enumerate(COLUMNS, 1):
-                val = row.get(key, "")
+                val      = row.get(key, "")
+                is_url   = (key == "event_url")
+                is_notes = (key == "notes")
+                is_dist  = (key == "distance_mi")
+                is_prop  = (key == "property_name")
+                is_left  = (col_idx == 1)
+                is_right = (col_idx == num_cols)
 
-                is_url  = (key == "event_url")
-                is_wrap = (key in ("event_title", "event_location", "event_url"))
-                is_cent = (key == "distance_mi")
+                cell_fill = FILL_NOTES if is_notes else row_fill
 
-                font = Font(name="Calibri", size=10,
-                            color="0563C1" if is_url and val else "000000",
-                            underline="single" if is_url and val else None)
+                if is_url and val:
+                    display = "Link"
+                    font = Font(name="Calibri", size=10, bold=False,
+                                color="1155CC", underline="single")
+                elif is_prop:
+                    display = val
+                    font = Font(name="Calibri", size=10, bold=True)
+                elif is_notes:
+                    display = val
+                    font = Font(name="Calibri", size=10, italic=True, color="888888")
+                else:
+                    display = val
+                    font = Font(name="Calibri", size=10)
+
                 align = Alignment(
                     vertical   = "center",
-                    horizontal = "center" if is_cent else "left",
-                    wrap_text  = is_wrap,
+                    horizontal = "center" if is_dist else "left",
+                    wrap_text  = False,
                 )
-                c = _cell(ws, row_idx, col_idx, val,
-                          font=font, fill=row_fill, align=align, border=THIN)
+                border = _group_border(top_edge, bot_edge, is_left, is_right)
+                c = _cell(ws, row_idx, col_idx, display,
+                          font=font, fill=cell_fill, align=align, border=border)
                 if is_url and val:
                     c.hyperlink = val
 
-    # ── Column widths ──
-    for col_idx, (_, _, width) in enumerate(COLUMNS, 1):
-        ws.column_dimensions[get_column_letter(col_idx)].width = width
+                if not is_notes and display:
+                    col_widths[col_idx - 1] = max(col_widths[col_idx - 1],
+                                                   len(str(display)))
+
+        # ── Auto-size columns ──
+        for col_idx, (_, _, max_width) in enumerate(COLUMNS, 1):
+            fitted = min(col_widths[col_idx - 1] + 2, max_width)
+            ws.column_dimensions[get_column_letter(col_idx)].width = max(fitted, 8)
+
+        # ── Color legend ──
+        legend_row = 4 + len(rows) + 2
+        legend_items = [
+            ("  Within 1 mile",    FILL_RED),
+            ("  1 – 2 miles",      FILL_AMBER),
+            ("  Beyond 2 miles",   FILL_GREEN),
+            ("  Analyst notes",    FILL_NOTES),
+        ]
+        _cell(ws, legend_row, 1, "Distance Key:",
+              font  = Font(name="Calibri", bold=True, size=10, color="2C3E50"),
+              align = Alignment(vertical="center"))
+        ws.row_dimensions[legend_row].height = 20
+        for j, (label, fill) in enumerate(legend_items):
+            r = legend_row + 1 + j
+            swatch = ws.cell(row=r, column=1)
+            swatch.fill = fill
+            swatch.border = _group_border(True, True, True, True)
+            ws.row_dimensions[r].height = 18
+            _cell(ws, r, 2, label,
+                  font  = Font(name="Calibri", size=10),
+                  align = Alignment(vertical="center"))
 
 
 def build_summary_sheet(ws, general_rows: list[dict],
