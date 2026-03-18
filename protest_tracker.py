@@ -122,10 +122,10 @@ COLUMNS = [
     ("Event Location",          "event_location",   44),
     ("Distance (mi)",           "distance_mi",      14),
     ("Event URL",               "event_url",        12),
-    ("Notes",                   "notes",            30),
     ("Is New?",                 "is_new",            8),
     ("Duplicate?",              "is_duplicate",      10),
     ("Recurring?",              "is_recurring",      10),
+    ("Notes",                   "notes",            30),
 ]
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -363,6 +363,35 @@ def annotate_event_flags(rows: list[dict], prev_event_ids: set | None = None) ->
                                         and eid and eid not in prev_event_ids) else ""
         row["is_duplicate"] = "Yes" if eid and len(event_props[eid]) > 1 else ""
         row["is_recurring"] = "Yes" if eid and len(event_slots[eid]) > 1 else ""
+
+
+def collapse_recurring_timeslots(rows: list[dict]) -> list[dict]:
+    """For each (event_id, property_id) pair keep only the single nearest upcoming
+    timeslot.  The is_recurring flag is preserved so the reader still knows the
+    event repeats.  Non-recurring rows pass through unchanged.
+    """
+    from collections import defaultdict
+
+    _FAR_FUTURE = datetime(9999, 12, 31, tzinfo=timezone.utc)
+
+    # Group row indices by (event_id, property_id)
+    groups: dict[tuple, list[int]] = defaultdict(list)
+    for i, row in enumerate(rows):
+        key = (row.get("event_id"), row.get("property_id", ""))
+        groups[key].append(i)
+
+    keep: set[int] = set()
+    for indices in groups.values():
+        if len(indices) == 1:
+            keep.add(indices[0])
+        else:
+            # Nearest = smallest event_dt_sort
+            best = min(indices,
+                       key=lambda i: rows[i].get("event_dt_sort") or _FAR_FUTURE)
+            keep.add(best)
+
+    # Preserve original sort order
+    return [row for i, row in enumerate(rows) if i in keep]
 
 
 # ── Geographic clustering ──────────────────────────────────────────────────────
@@ -692,7 +721,7 @@ def write_data_sheet(ws, rows: list[dict],
 
         # ── Color legend ──
         legend_row = 4 + len(rows) + 2
-        legend_items = [
+        distance_items = [
             ("  Within 1 mile",    FILL_RED),
             ("  1 – 2 miles",      FILL_AMBER),
             ("  Beyond 2 miles",   FILL_GREEN),
@@ -702,13 +731,34 @@ def write_data_sheet(ws, rows: list[dict],
               font  = Font(name="Calibri", bold=True, size=9, color="2C3E50"),
               align = Alignment(vertical="center"))
         ws.row_dimensions[legend_row].height = 14
-        for j, (label, fill) in enumerate(legend_items):
+        for j, (label, fill) in enumerate(distance_items):
             r = legend_row + 1 + j
             swatch = ws.cell(row=r, column=1)
             swatch.fill = fill
             swatch.border = _group_border(True, True, True, True)
             ws.row_dimensions[r].height = 14
             _cell(ws, r, 2, label,
+                  font  = Font(name="Calibri", size=9),
+                  align = Alignment(vertical="center"))
+
+        # ── Flag legend ──
+        flag_row = legend_row + len(distance_items) + 2
+        _cell(ws, flag_row, 1, "Flag Columns:",
+              font  = Font(name="Calibri", bold=True, size=9, color="2C3E50"),
+              align = Alignment(vertical="center"))
+        ws.row_dimensions[flag_row].height = 14
+        flag_items = [
+            ("Is New?",      "Event ID not seen in the previous run's data"),
+            ("Duplicate?",   "Same event appears near 2+ tracked properties this run"),
+            ("Recurring?",   "Same event has 2+ distinct time slots this run"),
+        ]
+        for j, (col_name, description) in enumerate(flag_items):
+            r = flag_row + 1 + j
+            ws.row_dimensions[r].height = 14
+            _cell(ws, r, 1, col_name,
+                  font  = Font(name="Calibri", bold=True, size=9),
+                  align = Alignment(vertical="center"))
+            _cell(ws, r, 2, description,
                   font  = Font(name="Calibri", size=9),
                   align = Alignment(vertical="center"))
 
@@ -968,6 +1018,9 @@ def main() -> None:
         general_rows, no_kings_rows = load_cache(args.cache)
         print(f"  3-Day events   : {len(general_rows)} rows")
         print(f"  No Kings events: {len(no_kings_rows)} rows")
+        # Collapse in case this cache predates the timeslot-collapse feature
+        general_rows  = collapse_recurring_timeslots(general_rows)
+        no_kings_rows = collapse_recurring_timeslots(no_kings_rows)
     else:
         print(f"  Properties CSV : {args.csv}")
         print(f"  Output file    : {args.output}")
@@ -1005,6 +1058,12 @@ def main() -> None:
         print(f"  New events (No Kings)     : {new_nk}")
         print(f"  Duplicates (3-day)        : {dup_g}")
         print(f"  Recurring  (3-day)        : {rec_g}")
+
+        print("\nCollapsing recurring events to nearest timeslot …")
+        general_rows  = collapse_recurring_timeslots(general_rows)
+        no_kings_rows = collapse_recurring_timeslots(no_kings_rows)
+        print(f"  3-Day rows after collapse : {len(general_rows)}")
+        print(f"  No Kings rows after collapse: {len(no_kings_rows)}")
 
         save_cache(general_rows, no_kings_rows, args.cache)
 
