@@ -766,7 +766,7 @@ def write_data_sheet(ws, rows: list[dict],
 def build_summary_sheet(ws, general_rows: list[dict],
                          no_kings_rows: list[dict]) -> None:
     ws.sheet_view.showGridLines = False
-    now_str = datetime.now().strftime("%B %d, %Y at %I:%M %p")
+    now_str = datetime.now(_EASTERN).strftime("%B %d, %Y at %H:%M EST")
 
     # Title
     ws.merge_cells("A1:C1")
@@ -937,7 +937,7 @@ def build_excel(general_rows: list[dict], no_kings_rows: list[dict],
 def build_dashboard_json(general_rows: list[dict], no_kings_rows: list[dict],
                           output_path: str = "dashboard_data.json") -> None:
     import json as _json
-    now = datetime.now()
+    now = datetime.now(_EASTERN)
     end_3d  = (now + timedelta(days=DAYS_GENERAL)).strftime("%B %d, %Y")
     end_30d = (now + timedelta(days=DAYS_NO_KINGS)).strftime("%B %d, %Y")
 
@@ -948,7 +948,7 @@ def build_dashboard_json(general_rows: list[dict], no_kings_rows: list[dict],
         return out
 
     payload = {
-        "generated": now.strftime("%B %d, %Y at %I:%M %p EST"),
+        "generated": now.strftime("%B %d, %Y at %H:%M EST"),
         "general": {
             "title": "3-Day Window",
             "subtitle": f"{now.strftime('%B %d, %Y')}  through  {end_3d}  •  Within {SEARCH_RADIUS_MI} miles",
