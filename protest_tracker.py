@@ -423,6 +423,14 @@ def collect_events(
                 bar.set_postfix(events=len(events), refresh=True)
             else:
                 print(f"           → {len(events)} event(s) returned")
+            # ── One-time raw location dump to diagnose coordinate issue ──────
+            if events and not getattr(collect_events, "_loc_dumped", False):
+                import json as _json
+                collect_events._loc_dumped = True
+                sample = events[0]
+                print(f"\n  [DEBUG] First event title : {sample.get('title')!r}")
+                print(f"  [DEBUG] location object   : {_json.dumps(sample.get('location'), indent=4)}\n")
+            # ────────────────────────────────────────────────────────────────
             process_events(events, cluster)
         except RateLimitError:
             print(f"\n    [429] Rate-limited — queued for retry pass.", file=sys.stderr)
