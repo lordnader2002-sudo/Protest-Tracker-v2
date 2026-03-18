@@ -231,10 +231,12 @@ def expand_event(event: dict, prop: dict, stats: dict | None = None) -> list[dic
     or location is unavailable.
     """
     loc = event.get("location") or {}
-    elat = loc.get("lat")
-    elon = loc.get("lon")
+    # Mobilize nests coordinates under location.location.latitude / .longitude
+    nested = loc.get("location") or {}
+    elat = nested.get("latitude") or loc.get("lat")
+    elon = nested.get("longitude") or loc.get("lon")
     if elat is None or elon is None:
-        # Mobilize API doesn't return lat/lon — fall back to zip centroid
+        # Last resort: fall back to zip centroid
         postal = (loc.get("postal_code") or "").strip()[:5]
         if postal and _HAS_ZIPCODES:
             if postal not in _zip_latlon_cache:
@@ -423,14 +425,6 @@ def collect_events(
                 bar.set_postfix(events=len(events), refresh=True)
             else:
                 print(f"           → {len(events)} event(s) returned")
-            # ── One-time raw location dump to diagnose coordinate issue ──────
-            if events and not getattr(collect_events, "_loc_dumped", False):
-                import json as _json
-                collect_events._loc_dumped = True
-                sample = events[0]
-                print(f"\n  [DEBUG] First event title : {sample.get('title')!r}")
-                print(f"  [DEBUG] location object   : {_json.dumps(sample.get('location'), indent=4)}\n")
-            # ────────────────────────────────────────────────────────────────
             process_events(events, cluster)
         except RateLimitError:
             print(f"\n    [429] Rate-limited — queued for retry pass.", file=sys.stderr)
