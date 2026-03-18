@@ -365,6 +365,35 @@ def annotate_event_flags(rows: list[dict], prev_event_ids: set | None = None) ->
         row["is_recurring"] = "Yes" if eid and len(event_slots[eid]) > 1 else ""
 
 
+def collapse_recurring_timeslots(rows: list[dict]) -> list[dict]:
+    """For each (event_id, property_id) pair keep only the single nearest upcoming
+    timeslot.  The is_recurring flag is preserved so the reader still knows the
+    event repeats.  Non-recurring rows pass through unchanged.
+    """
+    from collections import defaultdict
+
+    _FAR_FUTURE = datetime(9999, 12, 31, tzinfo=timezone.utc)
+
+    # Group row indices by (event_id, property_id)
+    groups: dict[tuple, list[int]] = defaultdict(list)
+    for i, row in enumerate(rows):
+        key = (row.get("event_id"), row.get("property_id", ""))
+        groups[key].append(i)
+
+    keep: set[int] = set()
+    for indices in groups.values():
+        if len(indices) == 1:
+            keep.add(indices[0])
+        else:
+            # Nearest = smallest event_dt_sort
+            best = min(indices,
+                       key=lambda i: rows[i].get("event_dt_sort") or _FAR_FUTURE)
+            keep.add(best)
+
+    # Preserve original sort order
+    return [row for i, row in enumerate(rows) if i in keep]
+
+
 # ── Geographic clustering ──────────────────────────────────────────────────────
 
 def cluster_properties(properties: list[dict]) -> list[list[dict]]:
@@ -989,6 +1018,9 @@ def main() -> None:
         general_rows, no_kings_rows = load_cache(args.cache)
         print(f"  3-Day events   : {len(general_rows)} rows")
         print(f"  No Kings events: {len(no_kings_rows)} rows")
+        # Collapse in case this cache predates the timeslot-collapse feature
+        general_rows  = collapse_recurring_timeslots(general_rows)
+        no_kings_rows = collapse_recurring_timeslots(no_kings_rows)
     else:
         print(f"  Properties CSV : {args.csv}")
         print(f"  Output file    : {args.output}")
@@ -1026,6 +1058,12 @@ def main() -> None:
         print(f"  New events (No Kings)     : {new_nk}")
         print(f"  Duplicates (3-day)        : {dup_g}")
         print(f"  Recurring  (3-day)        : {rec_g}")
+
+        print("\nCollapsing recurring events to nearest timeslot …")
+        general_rows  = collapse_recurring_timeslots(general_rows)
+        no_kings_rows = collapse_recurring_timeslots(no_kings_rows)
+        print(f"  3-Day rows after collapse : {len(general_rows)}")
+        print(f"  No Kings rows after collapse: {len(no_kings_rows)}")
 
         save_cache(general_rows, no_kings_rows, args.cache)
 
