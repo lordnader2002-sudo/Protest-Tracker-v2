@@ -24,6 +24,9 @@ import os
 import sys
 import time
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
+
+_EASTERN = ZoneInfo("America/New_York")
 
 import requests
 try:
@@ -80,6 +83,11 @@ ALT_BLUE   = PatternFill("solid", fgColor="DCE6F1")   # pale blue   (even data r
 ALT_PURPLE = PatternFill("solid", fgColor="E8DEFF")   # pale purple (even No Kings rows)
 WHITE_FILL = PatternFill("solid", fgColor="FFFFFF")
 
+# Distance-based row shading
+FILL_RED   = PatternFill("solid", fgColor="FFCCCC")   # < 1 mile
+FILL_AMBER = PatternFill("solid", fgColor="FFE8A0")   # 1–2 miles
+FILL_GREEN = PatternFill("solid", fgColor="CCFFCC")   # > 2 miles
+
 THIN = Border(
     left   = Side(style="thin", color="B8CCE4"),
     right  = Side(style="thin", color="B8CCE4"),
@@ -91,15 +99,14 @@ THIN = Border(
 
 COLUMNS = [
     # (header label,            row-dict key,      col width)
-    ("Property ID",             "property_id",      14),
     ("Property Name",           "property_name",    28),
-    ("Property Address",        "property_addr",    36),
     ("Event Title",             "event_title",      42),
     ("Event Type",              "event_type",       16),
-    ("Date & Time (UTC)",       "event_date",       22),
+    ("Date & Time (EST)",       "event_date",       22),
     ("Event Location",          "event_location",   44),
     ("Distance (mi)",           "distance_mi",      14),
-    ("Event URL",               "event_url",        50),
+    ("Event URL",               "event_url",        12),
+    ("Notes",                   "notes",            30),
 ]
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -281,7 +288,7 @@ def expand_event(event: dict, prop: dict, stats: dict | None = None) -> list[dic
             "property_addr":  prop["address"],
             "event_title":    title,
             "event_type":     etype,
-            "event_date":     dt_utc.strftime("%b %d, %Y  %I:%M %p UTC"),
+            "event_date":     dt_utc.astimezone(_EASTERN).strftime("%b %d, %Y  %I:%M %p EST"),
             "event_dt_sort":  dt_utc,
             "event_location": loc_str,
             "distance_mi":    round(dist, 2),
@@ -513,6 +520,9 @@ def write_data_sheet(ws, rows: list[dict],
     num_cols = len(COLUMNS)
     last_col = get_column_letter(num_cols)
 
+    # Sort closest → furthest
+    rows = sorted(rows, key=lambda r: r.get("distance_mi", 9999))
+
     # ── Row 1: Title ──
     ws.merge_cells(f"A1:{last_col}1")
     _cell(ws, 1, 1, sheet_title,
@@ -531,7 +541,7 @@ def write_data_sheet(ws, rows: list[dict],
           border = THIN)
     ws.row_dimensions[2].height = 16
 
-    # ── Row 3: Column headers ──
+    # ── Row 3: Column headers + auto-filter ──
     for col_idx, (label, _, _) in enumerate(COLUMNS, 1):
         _cell(ws, 3, col_idx, label,
               font   = Font(name="Calibri", bold=True, size=11, color="FFFFFF"),
@@ -540,6 +550,7 @@ def write_data_sheet(ws, rows: list[dict],
               border = THIN)
     ws.row_dimensions[3].height = 22
     ws.freeze_panes = "A4"
+    ws.auto_filter.ref = f"A3:{last_col}{max(4, 3 + len(rows))}"
 
     # ── Data rows ──
     if not rows:
@@ -549,34 +560,52 @@ def write_data_sheet(ws, rows: list[dict],
               align = Alignment(horizontal="center", vertical="center"))
         ws.row_dimensions[4].height = 24
     else:
+        # Track max content width per column for auto-sizing
+        col_widths = [len(label) for label, _, _ in COLUMNS]
+
         for row_idx, row in enumerate(rows, start=4):
-            is_even = (row_idx % 2 == 0)
-            row_fill = alt_fill if is_even else WHITE_FILL
+            dist = row.get("distance_mi", 9999)
+            if dist < 1.0:
+                row_fill = FILL_RED
+            elif dist < 2.0:
+                row_fill = FILL_AMBER
+            else:
+                row_fill = FILL_GREEN
             ws.row_dimensions[row_idx].height = 26
 
             for col_idx, (_, key, _) in enumerate(COLUMNS, 1):
                 val = row.get(key, "")
+                is_url   = (key == "event_url")
+                is_notes = (key == "notes")
+                is_cent  = (key == "distance_mi")
 
-                is_url  = (key == "event_url")
-                is_wrap = (key in ("event_title", "event_location", "event_url"))
-                is_cent = (key == "distance_mi")
+                if is_url and val:
+                    display = "Link"
+                    font = Font(name="Calibri", size=10,
+                                color="0563C1", underline="single")
+                else:
+                    display = val
+                    font = Font(name="Calibri", size=10)
 
-                font = Font(name="Calibri", size=10,
-                            color="0563C1" if is_url and val else "000000",
-                            underline="single" if is_url and val else None)
                 align = Alignment(
                     vertical   = "center",
                     horizontal = "center" if is_cent else "left",
-                    wrap_text  = is_wrap,
+                    wrap_text  = False,
                 )
-                c = _cell(ws, row_idx, col_idx, val,
+                c = _cell(ws, row_idx, col_idx, display,
                           font=font, fill=row_fill, align=align, border=THIN)
                 if is_url and val:
                     c.hyperlink = val
 
-    # ── Column widths ──
-    for col_idx, (_, _, width) in enumerate(COLUMNS, 1):
-        ws.column_dimensions[get_column_letter(col_idx)].width = width
+                # Track content width (skip Notes — user fills it in)
+                if not is_notes and display:
+                    col_widths[col_idx - 1] = max(col_widths[col_idx - 1],
+                                                   len(str(display)))
+
+        # ── Auto-size columns (cap at defined max widths) ──
+        for col_idx, (_, _, max_width) in enumerate(COLUMNS, 1):
+            fitted = min(col_widths[col_idx - 1] + 2, max_width)
+            ws.column_dimensions[get_column_letter(col_idx)].width = max(fitted, 8)
 
 
 def build_summary_sheet(ws, general_rows: list[dict],
