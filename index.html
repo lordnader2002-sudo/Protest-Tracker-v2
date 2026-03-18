@@ -39,6 +39,10 @@
 
     --flag-yes-color:   #16a34a;
     --link-color:       #2563eb;
+
+    --bar-red:          #ef4444;
+    --bar-amber:        #f59e0b;
+    --bar-green:        #22c55e;
   }
 
   [data-theme="dark"] {
@@ -70,6 +74,10 @@
 
     --flag-yes-color:   #4ade80;
     --link-color:       #60a5fa;
+
+    --bar-red:          #f87171;
+    --bar-amber:        #fbbf24;
+    --bar-green:        #4ade80;
   }
 
   /* ── Base ──────────────────────────────────────────────────────────── */
@@ -307,6 +315,169 @@
     box-shadow: 1px 1px 3px rgba(0,0,0,.2);
   }
 
+  /* ── Summary page ───────────────────────────────────────────────────── */
+  .sum-outer { padding: 20px; }
+
+  /* Threat banner */
+  .threat-banner {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 18px; border-radius: 12px; margin-bottom: 16px;
+    background: var(--bg); box-shadow: var(--neu-inset-sm);
+    border-left: 4px solid var(--threat-clr, var(--fg-muted));
+  }
+  .threat-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--threat-clr, var(--fg-muted)); flex-shrink: 0;
+    box-shadow: 0 0 6px var(--threat-clr, transparent);
+  }
+  .threat-dot.active { animation: pdot-ring 1.6s ease-out infinite; }
+  .threat-lbl { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .7px; color: var(--fg-muted); }
+  .threat-val { font-size: 13px; font-weight: 700; color: var(--threat-clr, var(--fg)); }
+  .threat-desc { font-size: 10.5px; color: var(--fg-muted); margin-left: auto; }
+
+  /* KPI strip */
+  .kpi-strip {
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px;
+    margin-bottom: 16px;
+  }
+  .kpi-card {
+    background: var(--bg); border-radius: 14px;
+    padding: 14px 18px 12px;
+    box-shadow: var(--neu-raised);
+    border-top: 3px solid var(--kpi-clr, var(--accent));
+    position: relative; overflow: hidden;
+  }
+  .kpi-card::after {
+    content: ""; position: absolute; top: 0; right: 0;
+    width: 60px; height: 60px; border-radius: 0 14px 0 60px;
+    background: linear-gradient(135deg, var(--kpi-clr, var(--accent)), transparent);
+    opacity: .07; pointer-events: none;
+  }
+  .kpi-lbl {
+    font-size: 9px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .8px; color: var(--fg-muted); margin-bottom: 8px;
+    display: flex; align-items: center; gap: 5px;
+  }
+  .kpi-val {
+    font-size: 36px; font-weight: 700; line-height: 1;
+    font-variant-numeric: tabular-nums;
+    font-family: "SF Mono","Cascadia Code","Fira Mono","Courier New",monospace;
+    color: var(--kpi-clr, var(--fg));
+  }
+  .kpi-sub { font-size: 9.5px; color: var(--fg-muted); margin-top: 5px; }
+
+  /* Pulse dot */
+  .pulse-dot {
+    display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+    background: var(--flag-yes-color); flex-shrink: 0; position: relative;
+  }
+  .pulse-dot::after {
+    content: ""; position: absolute; inset: -3px; border-radius: 50%;
+    background: var(--flag-yes-color); opacity: .45;
+    animation: pdot-ring 1.7s ease-out infinite;
+  }
+  @keyframes pdot-ring {
+    0%   { transform: scale(1); opacity: .45; }
+    100% { transform: scale(2.8); opacity: 0; }
+  }
+
+  /* Two-column layout */
+  .sum-cols {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+  }
+  .sum-col { display: flex; flex-direction: column; gap: 14px; }
+
+  /* Section cards */
+  .sum-sec {
+    background: var(--bg); border-radius: 14px;
+    box-shadow: var(--neu-raised); overflow: hidden;
+  }
+  .sum-sec-hd {
+    padding: 9px 16px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 7px;
+  }
+  .sum-sec-accent {
+    width: 3px; height: 13px; border-radius: 2px;
+    background: var(--sec-accent, var(--accent)); flex-shrink: 0;
+  }
+  .sum-sec-title {
+    font-size: 9.5px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .7px; color: var(--fg-muted);
+  }
+  .sum-sec-bd { padding: 12px 16px; }
+
+  /* Proximity bars */
+  .prox-grp { margin-bottom: 10px; }
+  .prox-grp:last-child { margin-bottom: 0; }
+  .prox-grp-lbl {
+    font-size: 9px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .5px; color: var(--fg-muted); margin-bottom: 5px;
+  }
+  .prox-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .prox-lbl { font-size: 10px; color: var(--fg-muted); width: 52px; flex-shrink: 0; }
+  .prox-track {
+    flex: 1; height: 10px; border-radius: 5px;
+    background: var(--bg); box-shadow: var(--neu-inset-sm); overflow: hidden;
+  }
+  .prox-fill {
+    height: 100%; border-radius: 5px; width: 0;
+    transition: width .7s cubic-bezier(.25,.46,.45,.94);
+  }
+  .prox-n {
+    font-size: 10px; font-weight: 700; font-variant-numeric: tabular-nums;
+    color: var(--fg); width: 18px; text-align: right; flex-shrink: 0;
+  }
+
+  /* Ranked list */
+  .rank-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 4px 0; border-bottom: 1px solid var(--td-border-color);
+  }
+  .rank-row:last-child { border-bottom: none; }
+  .rank-i {
+    font-size: 9px; font-weight: 700; color: var(--fg-muted);
+    width: 14px; text-align: center; flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+  }
+  .rank-name {
+    flex: 1; font-size: 11px; font-weight: 500; color: var(--fg);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .rank-track {
+    width: 56px; height: 5px; border-radius: 3px;
+    background: var(--bg); box-shadow: var(--neu-inset-sm);
+    overflow: hidden; flex-shrink: 0;
+  }
+  .rank-fill {
+    height: 100%; border-radius: 3px; width: 0;
+    background: linear-gradient(90deg, var(--th-bg-from), var(--th-bg-to));
+    transition: width .7s cubic-bezier(.25,.46,.45,.94);
+  }
+  .rank-n {
+    font-size: 10px; font-weight: 700; font-variant-numeric: tabular-nums;
+    color: var(--accent); width: 18px; text-align: right; flex-shrink: 0;
+  }
+
+  /* Event type bars */
+  .type-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .type-name {
+    font-size: 10px; color: var(--fg); width: 100px; flex-shrink: 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .type-track {
+    flex: 1; height: 8px; border-radius: 4px;
+    background: var(--bg); box-shadow: var(--neu-inset-sm); overflow: hidden;
+  }
+  .type-fill {
+    height: 100%; border-radius: 4px; width: 0;
+    background: linear-gradient(90deg, var(--th-nk-from), var(--th-nk-to));
+    transition: width .7s cubic-bezier(.25,.46,.45,.94);
+  }
+  .type-n {
+    font-size: 10px; font-weight: 700; font-variant-numeric: tabular-nums;
+    color: var(--accent-nk); width: 18px; text-align: right; flex-shrink: 0;
+  }
+
   /* ── Footer ────────────────────────────────────────────────────────── */
   .generated {
     text-align: center;
@@ -360,12 +531,97 @@
 
 <!-- ── Tabs ── -->
 <div class="tabs">
-  <div class="tab active" onclick="switchTab('general')">3-Day Events</div>
-  <div class="tab" onclick="switchTab('no_kings')">No Kings (30-Day)</div>
+  <div class="tab active" data-tab="summary"  onclick="switchTab('summary')">Summary</div>
+  <div class="tab"        data-tab="general"  onclick="switchTab('general')">3-Day Events</div>
+  <div class="tab"        data-tab="no_kings" onclick="switchTab('no_kings')">No Kings (30-Day)</div>
+</div>
+
+<!-- ── Summary panel ── -->
+<div id="panel-summary" class="tab-panel active">
+  <div class="sum-outer">
+
+    <!-- Threat banner -->
+    <div class="threat-banner" id="sum-threat-banner">
+      <div class="threat-dot" id="sum-threat-dot"></div>
+      <span class="threat-lbl">Proximity Alert &nbsp;—&nbsp;</span>
+      <span class="threat-val" id="sum-threat-val">—</span>
+      <span class="threat-desc" id="sum-threat-desc"></span>
+    </div>
+
+    <!-- KPI cards -->
+    <div class="kpi-strip">
+      <div class="kpi-card" style="--kpi-clr: var(--accent)">
+        <div class="kpi-lbl">3-Day Events</div>
+        <div class="kpi-val" id="kpi-gen">—</div>
+        <div class="kpi-sub" id="kpi-gen-sub">General window</div>
+      </div>
+      <div class="kpi-card" style="--kpi-clr: var(--accent-nk)">
+        <div class="kpi-lbl">No Kings Events</div>
+        <div class="kpi-val" id="kpi-nk">—</div>
+        <div class="kpi-sub">30-day window</div>
+      </div>
+      <div class="kpi-card" style="--kpi-clr: var(--flag-yes-color)">
+        <div class="kpi-lbl">New This Run <span class="pulse-dot" id="kpi-new-dot" style="display:none"></span></div>
+        <div class="kpi-val" id="kpi-new">—</div>
+        <div class="kpi-sub">Not seen before</div>
+      </div>
+      <div class="kpi-card" style="--kpi-clr: #f59e0b">
+        <div class="kpi-lbl">Duplicates</div>
+        <div class="kpi-val" id="kpi-dup">—</div>
+        <div class="kpi-sub">Near 2+ properties</div>
+      </div>
+      <div class="kpi-card" style="--kpi-clr: #64748b">
+        <div class="kpi-lbl">Recurring</div>
+        <div class="kpi-val" id="kpi-rec">—</div>
+        <div class="kpi-sub">Multiple timeslots</div>
+      </div>
+    </div>
+
+    <!-- Two-column grid -->
+    <div class="sum-cols">
+
+      <!-- Left column -->
+      <div class="sum-col">
+        <div class="sum-sec">
+          <div class="sum-sec-hd">
+            <div class="sum-sec-accent"></div>
+            <span class="sum-sec-title">Proximity Breakdown</span>
+          </div>
+          <div class="sum-sec-bd" id="sum-prox"></div>
+        </div>
+        <div class="sum-sec">
+          <div class="sum-sec-hd">
+            <div class="sum-sec-accent" style="background:var(--accent-nk)"></div>
+            <span class="sum-sec-title">Event Types</span>
+          </div>
+          <div class="sum-sec-bd" id="sum-types"></div>
+        </div>
+      </div>
+
+      <!-- Right column -->
+      <div class="sum-col">
+        <div class="sum-sec">
+          <div class="sum-sec-hd">
+            <div class="sum-sec-accent"></div>
+            <span class="sum-sec-title">Top Exposed Properties</span>
+          </div>
+          <div class="sum-sec-bd" id="sum-props"></div>
+        </div>
+        <div class="sum-sec">
+          <div class="sum-sec-hd">
+            <div class="sum-sec-accent" style="background:var(--accent-nk)"></div>
+            <span class="sum-sec-title">No Kings — Top Properties</span>
+          </div>
+          <div class="sum-sec-bd" id="sum-props-nk"></div>
+        </div>
+      </div>
+
+    </div><!-- /sum-cols -->
+  </div><!-- /sum-outer -->
 </div>
 
 <!-- ── 3-Day panel ── -->
-<div id="panel-general" class="tab-panel active">
+<div id="panel-general" class="tab-panel">
   <div class="panel-card">
     <div class="toolbar">
       <input type="text" id="search-general" placeholder="🔍  Search events…" oninput="render('general')">
@@ -454,7 +710,7 @@ const FLAG_KEYS = new Set(["is_new","is_duplicate","is_recurring"]);
 
 let DATA = {};
 let sortState = { general: { col: "distance_mi", asc: true }, no_kings: { col: "distance_mi", asc: true } };
-let activeTab = "general";
+let activeTab = "summary";
 
 /* ── Dark mode ──────────────────────────────────────────────────────── */
 function toggleTheme() {
@@ -582,12 +838,147 @@ function populateFilters(tab) {
 
 function switchTab(tab) {
   activeTab = tab;
-  document.querySelectorAll(".tab").forEach((el, i) => {
-    el.classList.toggle("active", ["general","no_kings"][i] === tab);
+  document.querySelectorAll(".tab").forEach(el => {
+    el.classList.toggle("active", el.dataset.tab === tab);
   });
   document.querySelectorAll(".tab-panel").forEach(el => {
     el.classList.toggle("active", el.id === `panel-${tab}`);
   });
+}
+
+/* ── Summary helpers ────────────────────────────────────────────────── */
+function animCount(el, target) {
+  if (!el) return;
+  const dur = 700, t0 = performance.now();
+  (function step(now) {
+    const p = Math.min((now - t0) / dur, 1);
+    const ease = 1 - Math.pow(1 - p, 3);
+    el.textContent = Math.round(ease * target);
+    if (p < 1) requestAnimationFrame(step);
+  })(t0);
+}
+
+function rankSection(el, entries, maxN, fillCls) {
+  if (!el) return;
+  el.innerHTML = "";
+  entries.forEach(([name, n], i) => {
+    const row   = document.createElement("div"); row.className = "rank-row";
+    const idx   = document.createElement("span"); idx.className = "rank-i"; idx.textContent = i + 1;
+    const nm    = document.createElement("span"); nm.className  = "rank-name"; nm.textContent = name;
+    const track = document.createElement("div"); track.className = "rank-track";
+    const fill  = document.createElement("div"); fill.className  = "rank-fill";
+    if (fillCls === "nk") fill.style.background = "linear-gradient(90deg,var(--th-nk-from),var(--th-nk-to))";
+    track.appendChild(fill);
+    const cnt = document.createElement("span"); cnt.className = "rank-n";
+    if (fillCls === "nk") cnt.style.color = "var(--accent-nk)";
+    cnt.textContent = n;
+    row.append(idx, nm, track, cnt);
+    el.appendChild(row);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      fill.style.width = (n / maxN * 100) + "%";
+    }));
+  });
+}
+
+function buildSummary() {
+  const gen = DATA.general?.rows  || [];
+  const nk  = DATA.no_kings?.rows || [];
+
+  /* — KPIs — */
+  const newN = gen.filter(r => String(r.is_new       ?? "").toLowerCase() === "yes").length;
+  const dupN = gen.filter(r => String(r.is_duplicate ?? "").toLowerCase() === "yes").length;
+  const recN = gen.filter(r => String(r.is_recurring ?? "").toLowerCase() === "yes").length;
+  animCount(document.getElementById("kpi-gen"),  gen.length);
+  animCount(document.getElementById("kpi-nk"),   nk.length);
+  animCount(document.getElementById("kpi-new"),  newN);
+  animCount(document.getElementById("kpi-dup"),  dupN);
+  animCount(document.getElementById("kpi-rec"),  recN);
+  const dot = document.getElementById("kpi-new-dot");
+  if (dot) dot.style.display = newN > 0 ? "inline-block" : "none";
+
+  /* — Threat banner — */
+  const redN = gen.filter(r => parseFloat(r.distance_mi) < 1).length
+             + nk.filter(r =>  parseFloat(r.distance_mi) < 1).length;
+  const [tLabel, tColor, tDesc] =
+    redN >= 5 ? ["CRITICAL", "#dc2626", `${redN} events detected within 1 mile`]
+  : redN >= 3 ? ["HIGH",     "#ea580c", `${redN} events detected within 1 mile`]
+  : redN >= 1 ? ["MODERATE", "#f59e0b", `${redN} event${redN>1?"s":""} detected within 1 mile`]
+  :             ["LOW",      "#16a34a", "No events within 1-mile radius"];
+  const banner = document.getElementById("sum-threat-banner");
+  const tdot   = document.getElementById("sum-threat-dot");
+  const tval   = document.getElementById("sum-threat-val");
+  const tdesc  = document.getElementById("sum-threat-desc");
+  if (banner) banner.style.setProperty("--threat-clr", tColor);
+  if (tdot)  { tdot.style.background = tColor; tdot.style.boxShadow = `0 0 7px ${tColor}`; if (redN > 0) tdot.classList.add("active"); }
+  if (tval)  { tval.textContent = tLabel; tval.style.color = tColor; }
+  if (tdesc)   tdesc.textContent = tDesc;
+
+  /* — Proximity breakdown — */
+  const proxEl = document.getElementById("sum-prox");
+  if (proxEl) {
+    proxEl.innerHTML = "";
+    [["3-Day General", gen], ["No Kings (30-Day)", nk]].forEach(([label, rows]) => {
+      const total = rows.length || 1;
+      const bands = [
+        ["< 1 mi", rows.filter(r => parseFloat(r.distance_mi) < 1).length,        "var(--bar-red)"],
+        ["1–2 mi", rows.filter(r => { const d = parseFloat(r.distance_mi); return d >= 1 && d < 2; }).length, "var(--bar-amber)"],
+        ["> 2 mi", rows.filter(r => parseFloat(r.distance_mi) >= 2).length,        "var(--bar-green)"],
+      ];
+      const grp = document.createElement("div"); grp.className = "prox-grp";
+      const hd  = document.createElement("div"); hd.className  = "prox-grp-lbl"; hd.textContent = label;
+      grp.appendChild(hd);
+      bands.forEach(([lbl, n, clr]) => {
+        const row   = document.createElement("div"); row.className = "prox-row";
+        const lblEl = document.createElement("span"); lblEl.className = "prox-lbl"; lblEl.textContent = lbl;
+        const track = document.createElement("div"); track.className = "prox-track";
+        const fill  = document.createElement("div"); fill.className  = "prox-fill";
+        fill.style.background = clr;
+        track.appendChild(fill);
+        const cnt = document.createElement("span"); cnt.className = "prox-n"; cnt.textContent = n;
+        row.append(lblEl, track, cnt);
+        grp.appendChild(row);
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          fill.style.width = (n / total * 100) + "%";
+        }));
+      });
+      proxEl.appendChild(grp);
+    });
+  }
+
+  /* — Top properties (general) — */
+  const propMap = {};
+  gen.forEach(r => { propMap[r.property_name] = (propMap[r.property_name] || 0) + 1; });
+  const topProps = Object.entries(propMap).sort((a,b) => b[1]-a[1]).slice(0, 10);
+  rankSection(document.getElementById("sum-props"), topProps, topProps[0]?.[1] || 1, "gen");
+
+  /* — Top properties (no kings) — */
+  const propMapNk = {};
+  nk.forEach(r => { propMapNk[r.property_name] = (propMapNk[r.property_name] || 0) + 1; });
+  const topPropsNk = Object.entries(propMapNk).sort((a,b) => b[1]-a[1]).slice(0, 10);
+  rankSection(document.getElementById("sum-props-nk"), topPropsNk, topPropsNk[0]?.[1] || 1, "nk");
+
+  /* — Event types (combined) — */
+  const typesEl = document.getElementById("sum-types");
+  if (typesEl) {
+    const typeMap = {};
+    [...gen, ...nk].forEach(r => { if (r.event_type) typeMap[r.event_type] = (typeMap[r.event_type] || 0) + 1; });
+    const sorted = Object.entries(typeMap).sort((a,b) => b[1]-a[1]).slice(0, 8);
+    const maxN = sorted[0]?.[1] || 1;
+    typesEl.innerHTML = "";
+    sorted.forEach(([name, n]) => {
+      const row   = document.createElement("div"); row.className = "type-row";
+      const nm    = document.createElement("span"); nm.className  = "type-name"; nm.textContent = name;
+      const track = document.createElement("div"); track.className = "type-track";
+      const fill  = document.createElement("div"); fill.className  = "type-fill";
+      track.appendChild(fill);
+      const cnt = document.createElement("span"); cnt.className = "type-n"; cnt.textContent = n;
+      row.append(nm, track, cnt);
+      typesEl.appendChild(row);
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        fill.style.width = (n / maxN * 100) + "%";
+      }));
+    });
+  }
 }
 
 async function init() {
@@ -610,6 +1001,7 @@ async function init() {
       document.getElementById(`tbl-${tab}`).style.display = "";
       render(tab);
     });
+    buildSummary();
   } catch(e) {
     console.error("Dashboard init error:", e);
     document.getElementById("loading").id = "error";
