@@ -4,275 +4,434 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Protest Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  /* ── Theme tokens ─────────────────────────────────────────────── */
+  /* ── Theme tokens ──────────────────────────────────────────────────── */
   :root {
-    --bg:              #f0f4f8;
-    --surface:         #fff;
-    --fg:              #1a1a2e;
-    --header-from:     #1F3864;
-    --header-to:       #2E75B6;
-    --tabs-bg:         #1F3864;
-    --border:          #dce6f1;
-    --input-border:    #b8cce4;
-    --input-focus:     #2E75B6;
-    --th-bg:           #2E75B6;
-    --th-nk-bg:        #5B2C8D;
-    --td-border:       rgba(0,0,0,.04);
-    --link-color:      #1155CC;
-    --notes-color:     #888;
-    --subtitle-color:  #555;
-    --legend-color:    #444;
-    --footer-color:    #999;
-    --loading-color:   #666;
-    --toggle-bg:       rgba(255,255,255,.15);
-    --toggle-border:   rgba(255,255,255,.3);
-    --band-red:        #FFCCCC;
-    --band-amber:      #FFE8A0;
-    --band-green:      #CCFFCC;
-    --band-red-nk:     #f7c5d4;
-    --band-amber-nk:   #f5dff5;
-    --band-green-nk:   #ddd0f5;
-    --flag-yes-color:  #1a6e1a;
+    --bg:               #dde3ee;
+    --fg:               #1e2a3a;
+    --fg-muted:         #6b7a93;
+    --accent:           #2563eb;
+    --accent-nk:        #7c3aed;
+    --border:           #c8d3e4;
+
+    /* Neumorphic shadow system — light source top-left */
+    --neu-raised:       6px 6px 14px rgba(0,0,0,.16), -5px -5px 12px rgba(255,255,255,.90);
+    --neu-raised-sm:    3px 3px 8px  rgba(0,0,0,.13), -3px -3px 7px  rgba(255,255,255,.85);
+    --neu-inset:        inset 3px 3px 7px rgba(0,0,0,.13), inset -3px -3px 6px rgba(255,255,255,.82);
+    --neu-inset-sm:     inset 2px 2px 5px rgba(0,0,0,.11), inset -2px -2px 4px rgba(255,255,255,.78);
+    --neu-pressed:      inset 3px 3px 8px rgba(0,0,0,.2),  inset -2px -2px 5px rgba(255,255,255,.5);
+
+    --th-bg-from:       #3b82f6;
+    --th-bg-to:         #2563eb;
+    --th-nk-from:       #8b5cf6;
+    --th-nk-to:         #7c3aed;
+    --td-stripe:        rgba(0,0,0,.025);
+
+    --band-red:         #ffd8d8;
+    --band-amber:       #fff0b8;
+    --band-green:       #cff2cf;
+    --band-red-nk:      #f8d0e0;
+    --band-amber-nk:    #f0d8fc;
+    --band-green-nk:    #ddd0fc;
+
+    --flag-yes-color:   #16a34a;
+    --link-color:       #2563eb;
   }
 
   [data-theme="dark"] {
-    --bg:              #0f1117;
-    --surface:         #161b27;
-    --fg:              #c8d4e8;
-    --header-from:     #0b1220;
-    --header-to:       #1a3060;
-    --tabs-bg:         #0b1220;
-    --border:          #252f45;
-    --input-border:    #2a3550;
-    --input-focus:     #4a7abf;
-    --th-bg:           #1a3060;
-    --th-nk-bg:        #3a1a58;
-    --td-border:       rgba(255,255,255,.04);
-    --link-color:      #6fa8ff;
-    --notes-color:     #5a6a80;
-    --subtitle-color:  #6a7c95;
-    --legend-color:    #6a7c95;
-    --footer-color:    #3a4a60;
-    --loading-color:   #6a7c95;
-    --toggle-bg:       rgba(255,255,255,.1);
-    --toggle-border:   rgba(255,255,255,.2);
-    --band-red:        #3a1515;
-    --band-amber:      #352a0a;
-    --band-green:      #153515;
-    --band-red-nk:     #3a1020;
-    --band-amber-nk:   #351535;
-    --band-green-nk:   #1e1040;
-    --flag-yes-color:  #5ecf5e;
+    --bg:               #181d2a;
+    --fg:               #c4d0e4;
+    --fg-muted:         #4e5e78;
+    --accent:           #3b82f6;
+    --accent-nk:        #8b5cf6;
+    --border:           #232c3e;
+
+    --neu-raised:       6px 6px 14px rgba(0,0,0,.55), -4px -4px 10px rgba(255,255,255,.04);
+    --neu-raised-sm:    3px 3px 8px  rgba(0,0,0,.45), -3px -3px 7px  rgba(255,255,255,.03);
+    --neu-inset:        inset 3px 3px 7px rgba(0,0,0,.55), inset -3px -3px 6px rgba(255,255,255,.03);
+    --neu-inset-sm:     inset 2px 2px 5px rgba(0,0,0,.5),  inset -2px -2px 4px rgba(255,255,255,.025);
+    --neu-pressed:      inset 3px 3px 8px rgba(0,0,0,.65), inset -2px -2px 5px rgba(255,255,255,.02);
+
+    --th-bg-from:       #2563eb;
+    --th-bg-to:         #1d4ed8;
+    --th-nk-from:       #7c3aed;
+    --th-nk-to:         #6d28d9;
+    --td-stripe:        rgba(255,255,255,.03);
+
+    --band-red:         #3a1515;
+    --band-amber:       #352a06;
+    --band-green:       #0d2e14;
+    --band-red-nk:      #381018;
+    --band-amber-nk:    #2c1438;
+    --band-green-nk:    #1a1042;
+
+    --flag-yes-color:   #4ade80;
+    --link-color:       #60a5fa;
   }
 
-  /* ── Base ─────────────────────────────────────────────────────── */
+  /* ── Base ──────────────────────────────────────────────────────────── */
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
   body {
-    font-family: Calibri, Arial, sans-serif; font-size: 13px;
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    font-size: 13px; line-height: 1.5;
     background: var(--bg); color: var(--fg);
-    transition: background .2s, color .2s;
+    transition: background .25s, color .25s;
+    min-height: 100vh;
   }
 
-  /* ── Header ───────────────────────────────────────────────────── */
+  /* ── Header ────────────────────────────────────────────────────────── */
   header {
-    background: linear-gradient(135deg, var(--header-from) 0%, var(--header-to) 100%);
-    color: #fff; padding: 14px 24px; display: flex; align-items: center; gap: 16px;
-    box-shadow: 0 2px 8px rgba(0,0,0,.25);
+    background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 55%, #3b82f6 100%);
+    color: #fff;
+    padding: 14px 28px;
+    display: flex; align-items: center; gap: 14px;
+    /* Strong drop + inner bevel highlight */
+    box-shadow:
+      0 4px 18px rgba(37,99,235,.45),
+      0 1px 0   rgba(255,255,255,.12) inset,
+      0 -1px 0  rgba(0,0,0,.2) inset;
+    position: relative; z-index: 10;
   }
-  header h1 { font-size: 18px; font-weight: 700; letter-spacing: .3px; }
-  header span { font-size: 11px; opacity: .8; margin-right: 4px; }
+
+  .header-icon {
+    width: 36px; height: 36px; flex-shrink: 0;
+    background: rgba(255,255,255,.15);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 2px 2px 5px rgba(0,0,0,.25), -1px -1px 3px rgba(255,255,255,.15) inset,
+                0 1px 0 rgba(255,255,255,.2) inset;
+  }
+
+  header h1 {
+    font-size: 17px; font-weight: 700; letter-spacing: -.1px;
+  }
+  header .header-sub {
+    font-size: 11px; opacity: .7; margin-top: 1px; font-weight: 400;
+  }
 
   .header-actions {
     display: flex; align-items: center; gap: 8px; margin-left: auto;
   }
-  #theme-toggle, #dl-excel {
-    border: 1px solid var(--toggle-border);
-    color: #fff; border-radius: 4px; padding: 4px 12px;
-    font-size: 11px; cursor: pointer; white-space: nowrap; text-decoration: none;
-  }
-  #theme-toggle { background: var(--toggle-bg); }
-  #dl-excel     { background: rgba(255,255,255,.1); }
-  #theme-toggle:hover, #dl-excel:hover { background: rgba(255,255,255,.25); }
 
-  /* ── Tabs ─────────────────────────────────────────────────────── */
-  .tabs { display: flex; background: var(--tabs-bg); padding: 0 24px; gap: 2px; }
+  #theme-toggle, #dl-excel {
+    border: 1px solid rgba(255,255,255,.28);
+    color: #fff; border-radius: 8px; padding: 5px 14px;
+    font-size: 11px; font-weight: 500; font-family: inherit;
+    cursor: pointer; white-space: nowrap; text-decoration: none;
+    background: rgba(255,255,255,.12);
+    box-shadow: 0 2px 5px rgba(0,0,0,.25),
+                inset 0 1px 0 rgba(255,255,255,.22),
+                inset 0 -1px 0 rgba(0,0,0,.12);
+    transition: all .14s;
+  }
+  #theme-toggle:hover, #dl-excel:hover {
+    background: rgba(255,255,255,.22);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0,0,0,.3),
+                inset 0 1px 0 rgba(255,255,255,.28);
+  }
+  #theme-toggle:active, #dl-excel:active {
+    transform: translateY(0);
+    background: rgba(0,0,0,.1);
+    box-shadow: inset 0 2px 5px rgba(0,0,0,.3),
+                inset 0 -1px 0 rgba(255,255,255,.1);
+  }
+
+  /* ── Tab bar ───────────────────────────────────────────────────────── */
+  .tabs {
+    background: linear-gradient(to bottom, #1e3580 0%, #1a2e70 100%);
+    padding: 0 24px; display: flex; gap: 2px;
+    box-shadow: 0 3px 8px rgba(0,0,0,.22),
+                inset 0 1px 0 rgba(255,255,255,.06);
+  }
+
   .tab {
-    padding: 8px 20px; cursor: pointer; font-size: 12px; font-weight: 600;
-    color: rgba(255,255,255,.65); border-bottom: 3px solid transparent;
+    padding: 9px 22px; cursor: pointer;
+    font-size: 12px; font-weight: 600; letter-spacing: .1px;
+    color: rgba(255,255,255,.55);
+    border-bottom: 3px solid transparent;
+    border-radius: 6px 6px 0 0;
     transition: all .15s;
   }
-  .tab.active { color: #fff; border-bottom-color: #fff; }
-  .tab:hover:not(.active) { color: rgba(255,255,255,.9); }
+  .tab.active {
+    color: #fff;
+    border-bottom-color: #60a5fa;
+    background: rgba(255,255,255,.1);
+    box-shadow: inset 0 2px 5px rgba(0,0,0,.2),
+                inset 0 -1px 0 rgba(255,255,255,.05);
+  }
+  .tab:hover:not(.active) { color: rgba(255,255,255,.85); }
 
   .tab-panel { display: none; }
   .tab-panel.active { display: block; }
 
-  /* ── Toolbar ──────────────────────────────────────────────────── */
+  /* ── Panel card ────────────────────────────────────────────────────── */
+  .panel-card {
+    margin: 20px;
+    border-radius: 18px;
+    background: var(--bg);
+    box-shadow: var(--neu-raised);
+    overflow: hidden;
+  }
+
+  /* ── Toolbar ───────────────────────────────────────────────────────── */
   .toolbar {
     display: flex; align-items: center; gap: 10px;
-    padding: 10px 20px; background: var(--surface);
-    border-bottom: 1px solid var(--border); flex-wrap: wrap;
-  }
-  .toolbar input[type=text] {
-    border: 1px solid var(--input-border); border-radius: 4px;
-    padding: 5px 10px; font-size: 12px; width: 220px; outline: none;
-    background: var(--surface); color: var(--fg);
-  }
-  .toolbar input[type=text]:focus { border-color: var(--input-focus); }
-  .toolbar select {
-    border: 1px solid var(--input-border); border-radius: 4px;
-    padding: 5px 8px; font-size: 12px; outline: none;
-    background: var(--surface); color: var(--fg);
-  }
-  .badge {
-    background: var(--th-bg); color: #fff; border-radius: 10px;
-    padding: 2px 10px; font-size: 11px; margin-left: auto;
-  }
-  .subtitle-bar {
-    font-size: 11px; color: var(--subtitle-color); padding: 5px 20px 0;
-    background: var(--surface);
+    padding: 14px 18px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
   }
 
-  /* ── Table ────────────────────────────────────────────────────── */
-  .table-wrap { overflow-x: auto; padding: 0; }
+  .toolbar input[type=text], .toolbar select {
+    border: none; outline: none;
+    border-radius: 10px; padding: 6px 12px;
+    font-size: 12px; font-family: inherit;
+    background: var(--bg); color: var(--fg);
+    box-shadow: var(--neu-inset);
+    transition: box-shadow .15s;
+    min-width: 0;
+  }
+  .toolbar input[type=text] { width: 210px; }
+  .toolbar input[type=text]:focus, .toolbar select:focus {
+    box-shadow: var(--neu-inset), 0 0 0 2px var(--accent);
+  }
+  .toolbar input[type=text]::placeholder { color: var(--fg-muted); }
+
+  .badge {
+    color: #fff; border-radius: 20px;
+    padding: 4px 14px; font-size: 11px; font-weight: 600;
+    margin-left: auto; letter-spacing: .2px; white-space: nowrap;
+    box-shadow: var(--neu-raised-sm);
+  }
+  .badge-general { background: linear-gradient(135deg, var(--th-bg-from), var(--th-bg-to)); }
+  .badge-nk      { background: linear-gradient(135deg, var(--th-nk-from), var(--th-nk-to)); }
+
+  .subtitle-bar {
+    font-size: 11px; color: var(--fg-muted);
+    padding: 6px 20px 4px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    letter-spacing: .1px;
+  }
+
+  /* ── Table ─────────────────────────────────────────────────────────── */
+  .table-wrap { overflow-x: auto; }
+
   table { border-collapse: collapse; width: 100%; min-width: 900px; }
+
   thead th {
-    background: var(--th-bg); color: #fff; font-size: 11px; font-weight: 700;
-    padding: 6px 8px; text-align: left; white-space: nowrap;
+    color: #fff;
+    font-size: 10.5px; font-weight: 600; letter-spacing: .5px;
+    text-transform: uppercase;
+    padding: 9px 10px;
+    text-align: left; white-space: nowrap;
     position: sticky; top: 0; z-index: 2;
     cursor: pointer; user-select: none;
+    /* Gradient bevel: lighter top = raised highlight */
+    background: linear-gradient(to bottom, var(--th-bg-from), var(--th-bg-to));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.22),
+                0 2px 6px rgba(0,0,0,.2);
   }
-  thead th.nk { background: var(--th-nk-bg); }
-  thead th:hover { filter: brightness(1.15); }
+  thead th.nk {
+    background: linear-gradient(to bottom, var(--th-nk-from), var(--th-nk-to));
+  }
+  thead th:hover { filter: brightness(1.12); }
   thead th .sort-arrow { opacity: .4; font-size: 9px; }
-  thead th.sort-asc .sort-arrow::after  { content: " ▲"; opacity: 1; }
+  thead th.sort-asc  .sort-arrow::after { content: " ▲"; opacity: 1; }
   thead th.sort-desc .sort-arrow::after { content: " ▼"; opacity: 1; }
 
-  tbody tr { cursor: default; }
-  tbody tr:hover td { filter: brightness(.94); }
+  tbody tr { cursor: default; transition: filter .1s; }
+  tbody tr:hover td { filter: brightness(.93); }
+  tbody tr:nth-child(even) td { background-color: var(--td-stripe); }
 
-  td { padding: 3px 8px; font-size: 12px; white-space: nowrap; border-bottom: 1px solid var(--td-border); }
-  td.wrap { white-space: normal; max-width: 340px; }
-  td.prop { font-weight: 700; }
-  td.dist { text-align: center; font-weight: 600; }
-  td.link a { color: var(--link-color); text-decoration: underline; font-size: 11px; }
-  td.notes { color: var(--notes-color); font-style: italic; }
-  td.flag  { text-align: center; font-size: 11px; font-weight: 600; color: var(--flag-yes-color); }
+  td {
+    padding: 4px 10px; font-size: 12px; white-space: nowrap;
+    border-bottom: 1px solid rgba(0,0,0,.04);
+  }
+  td.wrap  { white-space: normal; max-width: 320px; }
+  td.prop  { font-weight: 600; }
+  td.dist  { text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; }
+  td.link a { color: var(--link-color); text-decoration: none; font-size: 11px;
+              font-weight: 500; border-bottom: 1px solid currentColor; opacity: .85; }
+  td.link a:hover { opacity: 1; }
+  td.notes { color: var(--fg-muted); font-style: italic; }
+  td.flag  { text-align: center; font-size: 11px; font-weight: 700;
+             color: var(--flag-yes-color); letter-spacing: .2px; }
 
-  /* ── Distance bands ───────────────────────────────────────────── */
+  /* ── Distance bands ────────────────────────────────────────────────── */
   .band-red      { background: var(--band-red);      }
-  .band-amber    { background: var(--band-amber);    }
-  .band-green    { background: var(--band-green);    }
+  .band-amber    { background: var(--band-amber);     }
+  .band-green    { background: var(--band-green);     }
   .band-red-nk   { background: var(--band-red-nk);   }
   .band-amber-nk { background: var(--band-amber-nk); }
   .band-green-nk { background: var(--band-green-nk); }
 
-  /* ── Legend / footer ──────────────────────────────────────────── */
+  /* ── Legend ────────────────────────────────────────────────────────── */
   .legend {
-    display: flex; gap: 16px; padding: 8px 20px;
-    background: var(--surface); border-top: 1px solid var(--border); flex-wrap: wrap;
+    display: flex; gap: 14px; padding: 10px 20px;
+    background: var(--bg);
+    border-top: 1px solid var(--border);
+    flex-wrap: wrap; align-items: center;
   }
-  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--legend-color); }
-  .swatch { width: 14px; height: 14px; border-radius: 2px; border: 1px solid rgba(128,128,128,.2); }
+  .legend-label {
+    font-size: 10.5px; font-weight: 700; color: var(--fg-muted);
+    text-transform: uppercase; letter-spacing: .6px;
+  }
+  .legend-divider {
+    width: 1px; height: 16px;
+    background: var(--border);
+    margin: 0 4px;
+    align-self: center;
+  }
+  .legend-item {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px; color: var(--fg-muted);
+  }
+  .swatch {
+    width: 14px; height: 14px; border-radius: 4px;
+    border: 1px solid rgba(128,128,128,.18);
+    box-shadow: var(--neu-raised-sm);
+    flex-shrink: 0;
+  }
+  .flag-pill {
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--flag-yes-color); color: #fff;
+    border-radius: 10px; padding: 1px 7px;
+    font-size: 10px; font-weight: 700;
+    box-shadow: 1px 1px 3px rgba(0,0,0,.2);
+  }
 
-  .generated { font-size: 10px; color: var(--footer-color); padding: 6px 20px; background: var(--surface); }
+  /* ── Footer ────────────────────────────────────────────────────────── */
+  .generated {
+    text-align: center;
+    font-size: 10px; color: var(--fg-muted); letter-spacing: .2px;
+    padding: 8px 24px 16px;
+  }
 
-  #loading { text-align: center; padding: 60px; color: var(--loading-color); font-size: 14px; }
-  #error   { text-align: center; padding: 60px; color: #c00; font-size: 14px; }
+  /* ── States ────────────────────────────────────────────────────────── */
+  #loading {
+    text-align: center; padding: 72px;
+    color: var(--fg-muted); font-size: 14px; font-weight: 500;
+    background: var(--bg);
+  }
+  #error {
+    text-align: center; padding: 72px;
+    color: #dc2626; font-size: 14px;
+    background: var(--bg);
+  }
 </style>
-<!-- Apply saved theme before first paint to avoid flash -->
+<!-- Apply saved theme before first paint -->
 <script>
   (function() {
-    const t = localStorage.getItem('theme');
-    if (t === 'dark') document.documentElement.dataset.theme = 'dark';
+    if (localStorage.getItem('theme') === 'dark')
+      document.documentElement.dataset.theme = 'dark';
   })();
 </script>
 </head>
 <body>
 
+<!-- ── Header ── -->
 <header>
-  <h1>Protest Tracker</h1>
-  <span id="gen-time"></span>
+  <div class="header-icon">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+         stroke="rgba(255,255,255,.92)" stroke-width="1.8" stroke-linecap="round">
+      <circle cx="12" cy="12" r="9"/>
+      <circle cx="12" cy="12" r="4.5"/>
+      <circle cx="12" cy="12" r="1" fill="rgba(255,255,255,.92)" stroke="none"/>
+      <line x1="12" y1="2.5" x2="12" y2="7"/>
+      <line x1="21.5" y1="12" x2="17" y2="12"/>
+    </svg>
+  </div>
+  <div>
+    <h1>Protest Tracker</h1>
+    <div class="header-sub" id="gen-time"></div>
+  </div>
   <div class="header-actions">
-    <a id="dl-excel" href="protest_tracker_latest.xlsx" download>Download Excel</a>
+    <a id="dl-excel" href="protest_tracker_latest.xlsx" download>⬇ Download Excel</a>
     <button id="theme-toggle" onclick="toggleTheme()">Dark Mode</button>
   </div>
 </header>
 
+<!-- ── Tabs ── -->
 <div class="tabs">
   <div class="tab active" onclick="switchTab('general')">3-Day Events</div>
   <div class="tab" onclick="switchTab('no_kings')">No Kings (30-Day)</div>
 </div>
 
-<!-- 3-Day panel -->
+<!-- ── 3-Day panel ── -->
 <div id="panel-general" class="tab-panel active">
-  <div class="toolbar">
-    <input type="text" id="search-general" placeholder="Search events…" oninput="render('general')">
-    <select id="type-general" onchange="render('general')">
-      <option value="">All types</option>
-    </select>
-    <select id="prop-general" onchange="render('general')">
-      <option value="">All properties</option>
-    </select>
-    <span class="badge" id="count-general">0 events</span>
+  <div class="panel-card">
+    <div class="toolbar">
+      <input type="text" id="search-general" placeholder="🔍  Search events…" oninput="render('general')">
+      <select id="type-general" onchange="render('general')">
+        <option value="">All types</option>
+      </select>
+      <select id="prop-general" onchange="render('general')">
+        <option value="">All properties</option>
+      </select>
+      <span class="badge badge-general" id="count-general">0 events</span>
+    </div>
+    <div class="subtitle-bar" id="sub-general"></div>
+    <div class="table-wrap">
+      <div id="loading">Loading data…</div>
+      <table id="tbl-general" style="display:none">
+        <thead id="head-general"></thead>
+        <tbody id="body-general"></tbody>
+      </table>
+    </div>
+    <div class="legend">
+      <span class="legend-label">Distance</span>
+      <div class="legend-item"><div class="swatch band-red"></div> &lt; 1 mile</div>
+      <div class="legend-item"><div class="swatch band-amber"></div> 1 – 2 miles</div>
+      <div class="legend-item"><div class="swatch band-green"></div> &gt; 2 miles</div>
+      <div class="legend-divider"></div>
+      <span class="legend-label">Flags</span>
+      <div class="legend-item"><span class="flag-pill">Yes</span>&nbsp;New — not in previous run</div>
+      <div class="legend-item"><span class="flag-pill">Yes</span>&nbsp;Duplicate — near 2+ properties</div>
+      <div class="legend-item"><span class="flag-pill">Yes</span>&nbsp;Recurring — multiple time slots</div>
+    </div>
   </div>
-  <div class="subtitle-bar" id="sub-general"></div>
-  <div class="table-wrap">
-    <div id="loading">Loading data…</div>
-    <table id="tbl-general" style="display:none">
-      <thead id="head-general"></thead>
-      <tbody id="body-general"></tbody>
-    </table>
-  </div>
-  <div class="legend">
-    <strong style="font-size:11px;color:var(--legend-color);align-self:center">Distance:</strong>
-    <div class="legend-item"><div class="swatch band-red"></div> &lt; 1 mile</div>
-    <div class="legend-item"><div class="swatch band-amber"></div> 1–2 miles</div>
-    <div class="legend-item"><div class="swatch band-green"></div> &gt; 2 miles</div>
-    <span style="margin-left:12px;border-left:1px solid var(--border);padding-left:12px">
-      <strong style="font-size:11px;color:var(--legend-color)">Flags:</strong>
-    </span>
-    <div class="legend-item"><span style="color:var(--flag-yes-color);font-weight:700">Yes</span>&nbsp;= New — not seen in previous run</div>
-    <div class="legend-item"><span style="color:var(--flag-yes-color);font-weight:700">Yes</span>&nbsp;= Duplicate — same event near 2+ properties</div>
-    <div class="legend-item"><span style="color:var(--flag-yes-color);font-weight:700">Yes</span>&nbsp;= Recurring — event has multiple time slots</div>
-  </div>
+  <div class="generated" id="gen-footer"></div>
 </div>
 
-<!-- No Kings panel -->
+<!-- ── No Kings panel ── -->
 <div id="panel-no_kings" class="tab-panel">
-  <div class="toolbar">
-    <input type="text" id="search-no_kings" placeholder="Search events…" oninput="render('no_kings')">
-    <select id="type-no_kings" onchange="render('no_kings')">
-      <option value="">All types</option>
-    </select>
-    <select id="prop-no_kings" onchange="render('no_kings')">
-      <option value="">All properties</option>
-    </select>
-    <span class="badge" id="count-no_kings" style="background:var(--th-nk-bg)">0 events</span>
-  </div>
-  <div class="subtitle-bar" id="sub-no_kings"></div>
-  <div class="table-wrap">
-    <table id="tbl-no_kings" style="display:none">
-      <thead id="head-no_kings"></thead>
-      <tbody id="body-no_kings"></tbody>
-    </table>
-  </div>
-  <div class="legend">
-    <strong style="font-size:11px;color:var(--legend-color);align-self:center">Distance:</strong>
-    <div class="legend-item"><div class="swatch band-red-nk"></div> &lt; 1 mile</div>
-    <div class="legend-item"><div class="swatch band-amber-nk"></div> 1–2 miles</div>
-    <div class="legend-item"><div class="swatch band-green-nk"></div> &gt; 2 miles</div>
-    <span style="margin-left:12px;border-left:1px solid var(--border);padding-left:12px">
-      <strong style="font-size:11px;color:var(--legend-color)">Flags:</strong>
-    </span>
-    <div class="legend-item"><span style="color:var(--flag-yes-color);font-weight:700">Yes</span>&nbsp;= New — not seen in previous run</div>
-    <div class="legend-item"><span style="color:var(--flag-yes-color);font-weight:700">Yes</span>&nbsp;= Duplicate — same event near 2+ properties</div>
-    <div class="legend-item"><span style="color:var(--flag-yes-color);font-weight:700">Yes</span>&nbsp;= Recurring — event has multiple time slots</div>
+  <div class="panel-card">
+    <div class="toolbar">
+      <input type="text" id="search-no_kings" placeholder="🔍  Search events…" oninput="render('no_kings')">
+      <select id="type-no_kings" onchange="render('no_kings')">
+        <option value="">All types</option>
+      </select>
+      <select id="prop-no_kings" onchange="render('no_kings')">
+        <option value="">All properties</option>
+      </select>
+      <span class="badge badge-nk" id="count-no_kings">0 events</span>
+    </div>
+    <div class="subtitle-bar" id="sub-no_kings"></div>
+    <div class="table-wrap">
+      <table id="tbl-no_kings" style="display:none">
+        <thead id="head-no_kings"></thead>
+        <tbody id="body-no_kings"></tbody>
+      </table>
+    </div>
+    <div class="legend">
+      <span class="legend-label">Distance</span>
+      <div class="legend-item"><div class="swatch band-red-nk"></div> &lt; 1 mile</div>
+      <div class="legend-item"><div class="swatch band-amber-nk"></div> 1 – 2 miles</div>
+      <div class="legend-item"><div class="swatch band-green-nk"></div> &gt; 2 miles</div>
+      <div class="legend-divider"></div>
+      <span class="legend-label">Flags</span>
+      <div class="legend-item"><span class="flag-pill">Yes</span>&nbsp;New — not in previous run</div>
+      <div class="legend-item"><span class="flag-pill">Yes</span>&nbsp;Duplicate — near 2+ properties</div>
+      <div class="legend-item"><span class="flag-pill">Yes</span>&nbsp;Recurring — multiple time slots</div>
+    </div>
   </div>
 </div>
-
-<div class="generated" id="gen-footer"></div>
 
 <script>
 const COLS = [
@@ -295,7 +454,7 @@ let DATA = {};
 let sortState = { general: { col: "distance_mi", asc: true }, no_kings: { col: "distance_mi", asc: true } };
 let activeTab = "general";
 
-/* ── Dark mode ──────────────────────────────────────────────────── */
+/* ── Dark mode ──────────────────────────────────────────────────────── */
 function toggleTheme() {
   const isDark = document.documentElement.dataset.theme === 'dark';
   const next = isDark ? 'light' : 'dark';
@@ -304,14 +463,13 @@ function toggleTheme() {
   document.getElementById('theme-toggle').textContent = isDark ? 'Dark Mode' : 'Light Mode';
 }
 
-// Sync button label on load
 (function() {
   const btn = document.getElementById('theme-toggle');
   if (btn) btn.textContent =
     document.documentElement.dataset.theme === 'dark' ? 'Light Mode' : 'Dark Mode';
 })();
 
-/* ── Table helpers ──────────────────────────────────────────────── */
+/* ── Table helpers ──────────────────────────────────────────────────── */
 function band(dist, tab) {
   const sfx = tab === "no_kings" ? "-nk" : "";
   if (dist < 1)  return `band-red${sfx}`;
@@ -377,7 +535,7 @@ function render(tab) {
       const td = document.createElement("td");
       td.className = `${band(dist, tab)} ${c.cls}`.trim();
       if (c.key === "event_url" && r[c.key]) {
-        td.innerHTML = `<a href="${escHtml(r[c.key])}" target="_blank" rel="noopener">Link</a>`;
+        td.innerHTML = `<a href="${escHtml(r[c.key])}" target="_blank" rel="noopener">Link ↗</a>`;
       } else if (c.key === "distance_mi") {
         td.textContent = dist ? dist.toFixed(2) : "";
       } else {
@@ -430,7 +588,8 @@ async function init() {
 
     document.getElementById("loading").style.display = "none";
     document.getElementById("gen-time").textContent = "Generated: " + json.generated;
-    document.getElementById("gen-footer").textContent = "Data source: Mobilize.us  •  Generated: " + json.generated;
+    document.getElementById("gen-footer").textContent =
+      "Data source: Mobilize.us  •  Generated: " + json.generated;
     document.getElementById("sub-general").textContent  = json.general?.subtitle  || "";
     document.getElementById("sub-no_kings").textContent = json.no_kings?.subtitle || "";
 
