@@ -216,7 +216,7 @@ def event_location_str(loc: dict) -> str:
     return ", ".join(parts) if parts else "Virtual / TBD"
 
 
-def expand_event(event: dict, prop: dict) -> list[dict]:
+def expand_event(event: dict, prop: dict, stats: dict | None = None) -> list[dict]:
     """
     Expand a Mobilize event into one row per timeslot, filtered to
     SEARCH_RADIUS_MI from the property.  Returns [] if outside radius
@@ -226,10 +226,14 @@ def expand_event(event: dict, prop: dict) -> list[dict]:
     elat = loc.get("lat")
     elon = loc.get("lon")
     if elat is None or elon is None:
+        if stats is not None:
+            stats["no_coords"] += 1
         return []   # virtual / no coords
 
     dist = haversine(prop["lat"], prop["lon"], elat, elon)
     if dist > SEARCH_RADIUS_MI:
+        if stats is not None:
+            stats["too_far"] += 1
         return []
 
     title      = (event.get("title") or "").strip()
@@ -343,22 +347,28 @@ def collect_events(
     seen_general:  set[tuple] = set()
     seen_no_kings: set[tuple] = set()
 
+    stats = {"no_coords": 0, "too_far": 0, "excluded_type": 0,
+             "outside_window": 0, "passed": 0}
+
     def process_events(events: list[dict], cluster: list[dict]) -> None:
         for ev in events:
             eid       = ev.get("id")
             etype_raw = (ev.get("event_type") or "OTHER").upper()
             no_kings  = is_no_kings(ev)
             for prop in cluster:
-                rows = expand_event(ev, prop)
+                rows = expand_event(ev, prop, stats)
                 if not rows:
                     continue
                 for row in rows:
                     ts_key = (eid, prop["id"], row["event_dt_sort"])
-                    if (etype_raw not in EXCLUDE_TYPES
-                            and row["event_dt_sort"].timestamp() <= end_3d
-                            and ts_key not in seen_general):
+                    if etype_raw in EXCLUDE_TYPES:
+                        stats["excluded_type"] += 1
+                    elif row["event_dt_sort"].timestamp() > end_3d:
+                        stats["outside_window"] += 1
+                    elif ts_key not in seen_general:
                         seen_general.add(ts_key)
                         general_rows.append(row)
+                        stats["passed"] += 1
                     if no_kings and ts_key not in seen_no_kings:
                         seen_no_kings.add(ts_key)
                         no_kings_rows.append(row)
@@ -435,6 +445,15 @@ def collect_events(
                 for prop in cluster:
                     print(f"  [FAILED] {prop['name']} (zip={prop['zip']}) — "
                           f"no data after {MAX_RETRIES} retries.", file=sys.stderr)
+
+    total_checked = sum(stats.values())
+    print(f"\n  ── Filter breakdown (event × property pairs) ──────────────────")
+    print(f"     No coordinates (virtual/TBD) : {stats['no_coords']:>6}")
+    print(f"     Outside 3-mile radius        : {stats['too_far']:>6}")
+    print(f"     Excluded event type          : {stats['excluded_type']:>6}")
+    print(f"     Outside 3-day window         : {stats['outside_window']:>6}")
+    print(f"     ✓ Passed to 3-day sheet      : {stats['passed']:>6}")
+    print(f"  ───────────────────────────────────────────────────────────────\n")
 
     general_rows.sort(key=lambda r: r["event_dt_sort"])
     no_kings_rows.sort(key=lambda r: r["event_dt_sort"])
