@@ -547,32 +547,32 @@ def write_data_sheet(ws, rows: list[dict],
     # ── Row 1: Title ──
     ws.merge_cells(f"A1:{last_col}1")
     _cell(ws, 1, 1, sheet_title,
-          font   = Font(name="Calibri", bold=True, size=16, color="FFFFFF"),
+          font   = Font(name="Calibri", bold=True, size=13, color="FFFFFF"),
           fill   = title_fill,
           align  = Alignment(horizontal="center", vertical="center"),
           border = THIN)
-    ws.row_dimensions[1].height = 36
+    ws.row_dimensions[1].height = 26
 
     # ── Row 2: Subtitle ──
     ws.merge_cells(f"A2:{last_col}2")
     _cell(ws, 2, 1, subtitle,
-          font   = Font(name="Calibri", italic=True, size=10, color="FFFFFF"),
+          font   = Font(name="Calibri", italic=True, size=9, color="FFFFFF"),
           fill   = title_fill,
           align  = Alignment(horizontal="center", vertical="center"),
           border = THIN)
-    ws.row_dimensions[2].height = 18
+    ws.row_dimensions[2].height = 14
 
     # ── Row 3: Column headers + auto-filter ──
     for col_idx, (label, key, _) in enumerate(COLUMNS, 1):
         is_notes_hdr = (key == "notes")
         _cell(ws, 3, col_idx, label,
-              font   = Font(name="Calibri", bold=True, size=11,
+              font   = Font(name="Calibri", bold=True, size=9,
                             color="FFFFFF" if not is_notes_hdr else "FFFFFF",
                             italic=is_notes_hdr),
               fill   = col_hdr_fill,
               align  = Alignment(horizontal="center", vertical="center", wrap_text=True),
               border = THIN)
-    ws.row_dimensions[3].height = 24
+    ws.row_dimensions[3].height = 18
     ws.freeze_panes = "A4"
     ws.auto_filter.ref = f"A3:{last_col}{max(4, 3 + len(rows))}"
 
@@ -598,7 +598,7 @@ def write_data_sheet(ws, rows: list[dict],
             bot_edge = (band != next_band)
 
             row_fill = {"red": FILL_RED, "amber": FILL_AMBER, "green": FILL_GREEN}[band]
-            ws.row_dimensions[row_idx].height = 28
+            ws.row_dimensions[row_idx].height = 14
 
             for col_idx, (_, key, _) in enumerate(COLUMNS, 1):
                 val      = row.get(key, "")
@@ -613,17 +613,17 @@ def write_data_sheet(ws, rows: list[dict],
 
                 if is_url and val:
                     display = "Link"
-                    font = Font(name="Calibri", size=10, bold=False,
+                    font = Font(name="Calibri", size=9, bold=False,
                                 color="1155CC", underline="single")
                 elif is_prop:
                     display = val
-                    font = Font(name="Calibri", size=10, bold=True)
+                    font = Font(name="Calibri", size=9, bold=True)
                 elif is_notes:
                     display = val
-                    font = Font(name="Calibri", size=10, italic=True, color="888888")
+                    font = Font(name="Calibri", size=9, italic=True, color="888888")
                 else:
                     display = val
-                    font = Font(name="Calibri", size=10)
+                    font = Font(name="Calibri", size=9)
 
                 align = Alignment(
                     vertical   = "center",
@@ -654,17 +654,17 @@ def write_data_sheet(ws, rows: list[dict],
             ("  Analyst notes",    FILL_NOTES),
         ]
         _cell(ws, legend_row, 1, "Distance Key:",
-              font  = Font(name="Calibri", bold=True, size=10, color="2C3E50"),
+              font  = Font(name="Calibri", bold=True, size=9, color="2C3E50"),
               align = Alignment(vertical="center"))
-        ws.row_dimensions[legend_row].height = 20
+        ws.row_dimensions[legend_row].height = 14
         for j, (label, fill) in enumerate(legend_items):
             r = legend_row + 1 + j
             swatch = ws.cell(row=r, column=1)
             swatch.fill = fill
             swatch.border = _group_border(True, True, True, True)
-            ws.row_dimensions[r].height = 18
+            ws.row_dimensions[r].height = 14
             _cell(ws, r, 2, label,
-                  font  = Font(name="Calibri", size=10),
+                  font  = Font(name="Calibri", size=9),
                   align = Alignment(vertical="center"))
 
 
