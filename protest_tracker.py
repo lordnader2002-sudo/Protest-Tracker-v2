@@ -32,6 +32,14 @@ try:
 except ImportError:
     _HAS_TQDM = False
 
+try:
+    import zipcodes as _zipcodes
+    _HAS_ZIPCODES = True
+except ImportError:
+    _HAS_ZIPCODES = False
+
+_zip_latlon_cache: dict[str, tuple[float, float] | None] = {}
+
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
@@ -226,9 +234,27 @@ def expand_event(event: dict, prop: dict, stats: dict | None = None) -> list[dic
     elat = loc.get("lat")
     elon = loc.get("lon")
     if elat is None or elon is None:
-        if stats is not None:
-            stats["no_coords"] += 1
-        return []   # virtual / no coords
+        # Mobilize API doesn't return lat/lon — fall back to zip centroid
+        postal = (loc.get("postal_code") or "").strip()[:5]
+        if postal and _HAS_ZIPCODES:
+            if postal not in _zip_latlon_cache:
+                matches = _zipcodes.matching(postal)
+                if matches:
+                    _zip_latlon_cache[postal] = (float(matches[0]["lat"]),
+                                                  float(matches[0]["long"]))
+                else:
+                    _zip_latlon_cache[postal] = None
+            coords = _zip_latlon_cache.get(postal)
+            if coords:
+                elat, elon = coords
+            else:
+                if stats is not None:
+                    stats["no_coords"] += 1
+                return []
+        else:
+            if stats is not None:
+                stats["no_coords"] += 1
+            return []   # virtual / no postal code
 
     dist = haversine(prop["lat"], prop["lon"], elat, elon)
     if dist > SEARCH_RADIUS_MI:
