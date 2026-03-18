@@ -19,6 +19,7 @@ Usage
 
 import argparse
 import csv
+import json
 import math
 import os
 import sys
@@ -756,6 +757,44 @@ def build_summary_sheet(ws, general_rows: list[dict],
     ws.column_dimensions["C"].width = 5
 
 
+# ── Cache helpers ──────────────────────────────────────────────────────────────
+
+CACHE_FILE = "protest_tracker_cache.json"
+
+
+def save_cache(general_rows: list[dict], no_kings_rows: list[dict],
+               path: str = CACHE_FILE) -> None:
+    def _serialize(rows):
+        out = []
+        for r in rows:
+            d = dict(r)
+            if isinstance(d.get("event_dt_sort"), datetime):
+                d["event_dt_sort"] = d["event_dt_sort"].isoformat()
+            out.append(d)
+        return out
+
+    with open(path, "w") as f:
+        json.dump({"general": _serialize(general_rows),
+                   "no_kings": _serialize(no_kings_rows)}, f)
+    print(f"  ✓ Data cache saved → {path}")
+
+
+def load_cache(path: str = CACHE_FILE) -> tuple[list[dict], list[dict]]:
+    with open(path) as f:
+        data = json.load(f)
+
+    def _deserialize(rows):
+        out = []
+        for r in rows:
+            d = dict(r)
+            if isinstance(d.get("event_dt_sort"), str):
+                d["event_dt_sort"] = datetime.fromisoformat(d["event_dt_sort"])
+            out.append(d)
+        return out
+
+    return _deserialize(data["general"]), _deserialize(data["no_kings"])
+
+
 # ── Build workbook ─────────────────────────────────────────────────────────────
 
 def build_excel(general_rows: list[dict], no_kings_rows: list[dict],
@@ -821,6 +860,15 @@ def main() -> None:
         default="",
         help="Mobilize.us API key (overrides MOBILIZE_API_KEY env var)",
     )
+    ap.add_argument(
+        "--regen", "-r",
+        action="store_true",
+        help=f"Skip API calls and rebuild Excel from cached data ({CACHE_FILE})",
+    )
+    ap.add_argument(
+        "--cache", default=CACHE_FILE,
+        help=f"Path to cache file (default: {CACHE_FILE})",
+    )
     args = ap.parse_args()
 
     # Allow CLI flag to override env var
@@ -831,25 +879,41 @@ def main() -> None:
     print("=" * 64)
     print("  PROTEST TRACKER")
     print("=" * 64)
-    print(f"  Properties CSV : {args.csv}")
-    print(f"  Output file    : {args.output}")
-    print(f"  Authenticated  : {'Yes' if MOBILIZE_API_KEY else 'No (set MOBILIZE_API_KEY for better rate limits)'}")
-    print(f"  Search radius  : {SEARCH_RADIUS_MI} miles")
-    print(f"  Cluster radius : {CLUSTER_RADIUS_MI} miles (properties grouped for fewer API calls)")
-    print(f"  General window : today + {DAYS_GENERAL} days")
-    print(f"  No Kings window: today + {DAYS_NO_KINGS} days")
-    print("=" * 64)
 
-    properties = load_properties(args.csv)
-    print(f"\nLoaded {len(properties)} properties.\n")
-    print("Querying Mobilize.us public API …\n")
+    if args.regen:
+        print(f"  Mode           : REGEN (rebuilding from cache)")
+        print(f"  Cache file     : {args.cache}")
+        print(f"  Output file    : {args.output}")
+        print("=" * 64)
+        if not os.path.exists(args.cache):
+            print(f"\n  ERROR: cache file not found: {args.cache}", file=sys.stderr)
+            sys.exit(1)
+        print(f"\nLoading cached data from {args.cache} …")
+        general_rows, no_kings_rows = load_cache(args.cache)
+        print(f"  3-Day events   : {len(general_rows)} rows")
+        print(f"  No Kings events: {len(no_kings_rows)} rows")
+    else:
+        print(f"  Properties CSV : {args.csv}")
+        print(f"  Output file    : {args.output}")
+        print(f"  Authenticated  : {'Yes' if MOBILIZE_API_KEY else 'No (set MOBILIZE_API_KEY for better rate limits)'}")
+        print(f"  Search radius  : {SEARCH_RADIUS_MI} miles")
+        print(f"  Cluster radius : {CLUSTER_RADIUS_MI} miles (properties grouped for fewer API calls)")
+        print(f"  General window : today + {DAYS_GENERAL} days")
+        print(f"  No Kings window: today + {DAYS_NO_KINGS} days")
+        print("=" * 64)
 
-    general_rows, no_kings_rows = collect_events(properties)
+        properties = load_properties(args.csv)
+        print(f"\nLoaded {len(properties)} properties.\n")
+        print("Querying Mobilize.us public API …\n")
 
-    print(f"\n{'─'*64}")
-    print(f"  3-Day events found        : {len(general_rows)} property-event rows")
-    print(f"  No Kings events found     : {len(no_kings_rows)} property-event rows")
-    print(f"{'─'*64}")
+        general_rows, no_kings_rows = collect_events(properties)
+
+        print(f"\n{'─'*64}")
+        print(f"  3-Day events found        : {len(general_rows)} property-event rows")
+        print(f"  No Kings events found     : {len(no_kings_rows)} property-event rows")
+        print(f"{'─'*64}")
+
+        save_cache(general_rows, no_kings_rows, args.cache)
 
     print("\nBuilding Excel workbook …")
     build_excel(general_rows, no_kings_rows, args.output)
