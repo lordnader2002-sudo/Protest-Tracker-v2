@@ -306,9 +306,10 @@ async function init() {
       render(tab);
     });
   } catch(e) {
+    console.error("Dashboard init error:", e);
     document.getElementById("loading").id = "error";
     document.getElementById("error").textContent =
-      "Could not load dashboard_data.json. Run the tracker workflow first.";
+      "Could not load dashboard_data.json. Run the tracker workflow first. (Error: " + e.message + ")";
   }
 }
 
