@@ -83,3 +83,16 @@ jobs:
           name: "protest-tracker-report-${{ github.run_id }}"
           path: "protest_tracker_*.xlsx"
           retention-days: 30
+
+      # ── Deploy dashboard to GitHub Pages ──────────────────────────────────
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./
+          publish_branch: gh-pages
+          include_files: |
+            index.html
+            dashboard_data.json
+          force_orphan: false
+          keep_files: false

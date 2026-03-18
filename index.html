@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Protest Tracker</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Calibri, Arial, sans-serif; font-size: 13px; background: #f0f4f8; color: #1a1a2e; }
+
+  header {
+    background: linear-gradient(135deg, #1F3864 0%, #2E75B6 100%);
+    color: #fff; padding: 14px 24px; display: flex; align-items: center; gap: 16px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.25);
+  }
+  header h1 { font-size: 18px; font-weight: 700; letter-spacing: .3px; }
+  header span { font-size: 11px; opacity: .8; margin-left: auto; }
+
+  .tabs { display: flex; background: #1F3864; padding: 0 24px; gap: 2px; }
+  .tab {
+    padding: 8px 20px; cursor: pointer; font-size: 12px; font-weight: 600;
+    color: rgba(255,255,255,.65); border-bottom: 3px solid transparent;
+    transition: all .15s;
+  }
+  .tab.active { color: #fff; border-bottom-color: #fff; }
+  .tab:hover:not(.active) { color: rgba(255,255,255,.9); }
+
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  .toolbar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 20px; background: #fff;
+    border-bottom: 1px solid #dce6f1;
+    flex-wrap: wrap;
+  }
+  .toolbar input[type=text] {
+    border: 1px solid #b8cce4; border-radius: 4px;
+    padding: 5px 10px; font-size: 12px; width: 220px; outline: none;
+  }
+  .toolbar input[type=text]:focus { border-color: #2E75B6; }
+  .toolbar select {
+    border: 1px solid #b8cce4; border-radius: 4px;
+    padding: 5px 8px; font-size: 12px; outline: none;
+  }
+  .badge {
+    background: #2E75B6; color: #fff; border-radius: 10px;
+    padding: 2px 10px; font-size: 11px; margin-left: auto;
+  }
+  .subtitle-bar {
+    font-size: 11px; color: #555; padding: 5px 20px 0;
+    background: #fff;
+  }
+
+  .table-wrap { overflow-x: auto; padding: 0; }
+  table { border-collapse: collapse; width: 100%; min-width: 900px; }
+  thead th {
+    background: #2E75B6; color: #fff; font-size: 11px; font-weight: 700;
+    padding: 6px 8px; text-align: left; white-space: nowrap;
+    position: sticky; top: 0; z-index: 2;
+    cursor: pointer; user-select: none;
+  }
+  thead th.nk { background: #5B2C8D; }
+  thead th:hover { filter: brightness(1.15); }
+  thead th .sort-arrow { opacity: .4; font-size: 9px; }
+  thead th.sort-asc .sort-arrow::after  { content: " ▲"; opacity: 1; }
+  thead th.sort-desc .sort-arrow::after { content: " ▼"; opacity: 1; }
+
+  tbody tr { cursor: default; }
+  tbody tr:hover td { filter: brightness(.94); }
+
+  td { padding: 3px 8px; font-size: 12px; white-space: nowrap; border-bottom: 1px solid rgba(0,0,0,.04); }
+  td.wrap { white-space: normal; max-width: 340px; }
+  td.prop { font-weight: 700; }
+  td.dist { text-align: center; font-weight: 600; }
+  td.link a { color: #1155CC; text-decoration: underline; font-size: 11px; }
+  td.notes { color: #888; font-style: italic; }
+
+  .band-red    { background: #FFCCCC; }
+  .band-amber  { background: #FFE8A0; }
+  .band-green  { background: #CCFFCC; }
+  .band-red-nk   { background: #f7c5d4; }
+  .band-amber-nk { background: #f5dff5; }
+  .band-green-nk { background: #ddd0f5; }
+
+  .legend { display: flex; gap: 16px; padding: 8px 20px; background: #fff; border-top: 1px solid #dce6f1; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #444; }
+  .swatch { width: 14px; height: 14px; border-radius: 2px; border: 1px solid rgba(0,0,0,.1); }
+
+  .generated { font-size: 10px; color: #999; padding: 6px 20px; background: #fff; }
+
+  #loading { text-align: center; padding: 60px; color: #666; font-size: 14px; }
+  #error   { text-align: center; padding: 60px; color: #c00; font-size: 14px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Protest Tracker</h1>
+  <span id="gen-time"></span>
+</header>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('general')">3-Day Events</div>
+  <div class="tab" onclick="switchTab('no_kings')">No Kings (30-Day)</div>
+</div>
+
+<!-- 3-Day panel -->
+<div id="panel-general" class="tab-panel active">
+  <div class="toolbar">
+    <input type="text" id="search-general" placeholder="Search events…" oninput="render('general')">
+    <select id="type-general" onchange="render('general')">
+      <option value="">All types</option>
+    </select>
+    <select id="prop-general" onchange="render('general')">
+      <option value="">All properties</option>
+    </select>
+    <span class="badge" id="count-general">0 events</span>
+  </div>
+  <div class="subtitle-bar" id="sub-general"></div>
+  <div class="table-wrap">
+    <div id="loading">Loading data…</div>
+    <table id="tbl-general" style="display:none">
+      <thead id="head-general"></thead>
+      <tbody id="body-general"></tbody>
+    </table>
+  </div>
+  <div class="legend">
+    <div class="legend-item"><div class="swatch band-red"></div> &lt; 1 mile</div>
+    <div class="legend-item"><div class="swatch band-amber"></div> 1–2 miles</div>
+    <div class="legend-item"><div class="swatch band-green"></div> &gt; 2 miles</div>
+  </div>
+</div>
+
+<!-- No Kings panel -->
+<div id="panel-no_kings" class="tab-panel">
+  <div class="toolbar">
+    <input type="text" id="search-no_kings" placeholder="Search events…" oninput="render('no_kings')">
+    <select id="type-no_kings" onchange="render('no_kings')">
+      <option value="">All types</option>
+    </select>
+    <select id="prop-no_kings" onchange="render('no_kings')">
+      <option value="">All properties</option>
+    </select>
+    <span class="badge" id="count-no_kings" style="background:#5B2C8D">0 events</span>
+  </div>
+  <div class="subtitle-bar" id="sub-no_kings"></div>
+  <div class="table-wrap">
+    <table id="tbl-no_kings" style="display:none">
+      <thead id="head-no_kings"></thead>
+      <tbody id="body-no_kings"></tbody>
+    </table>
+  </div>
+  <div class="legend">
+    <div class="legend-item"><div class="swatch band-red-nk"></div> &lt; 1 mile</div>
+    <div class="legend-item"><div class="swatch band-amber-nk"></div> 1–2 miles</div>
+    <div class="legend-item"><div class="swatch band-green-nk"></div> &gt; 2 miles</div>
+  </div>
+</div>
+
+<div class="generated" id="gen-footer"></div>
+
+<script>
+const COLS = [
+  { key: "property_name",  label: "Property Name",      cls: "prop" },
+  { key: "event_title",    label: "Event Title",         cls: "wrap" },
+  { key: "event_type",     label: "Event Type",          cls: "" },
+  { key: "event_date",     label: "Date & Time (EST)",   cls: "" },
+  { key: "event_location", label: "Event Location",      cls: "wrap" },
+  { key: "distance_mi",    label: "Distance (mi)",       cls: "dist" },
+  { key: "event_url",      label: "URL",                 cls: "link" },
+  { key: "notes",          label: "Notes",               cls: "notes" },
+];
+
+let DATA = {};
+let sortState = { general: { col: "distance_mi", asc: true }, no_kings: { col: "distance_mi", asc: true } };
+let activeTab = "general";
+
+function band(dist, tab) {
+  const sfx = tab === "no_kings" ? "-nk" : "";
+  if (dist < 1)  return `band-red${sfx}`;
+  if (dist < 2)  return `band-amber${sfx}`;
+  return `band-green${sfx}`;
+}
+
+function buildHeader(tab) {
+  const isNk = tab === "no_kings";
+  const tr = document.createElement("tr");
+  COLS.forEach((c, i) => {
+    const th = document.createElement("th");
+    if (isNk) th.classList.add("nk");
+    th.innerHTML = `${c.label} <span class="sort-arrow"></span>`;
+    th.dataset.col = c.key;
+    th.onclick = () => {
+      if (sortState[tab].col === c.key) sortState[tab].asc = !sortState[tab].asc;
+      else { sortState[tab].col = c.key; sortState[tab].asc = true; }
+      render(tab);
+    };
+    tr.appendChild(th);
+  });
+  document.getElementById(`head-${tab}`).innerHTML = "";
+  document.getElementById(`head-${tab}`).appendChild(tr);
+}
+
+function render(tab) {
+  const search  = (document.getElementById(`search-${tab}`)?.value || "").toLowerCase();
+  const typeF   = document.getElementById(`type-${tab}`)?.value || "";
+  const propF   = document.getElementById(`prop-${tab}`)?.value || "";
+  const { col, asc } = sortState[tab];
+
+  let rows = (DATA[tab]?.rows || []).filter(r => {
+    if (typeF && r.event_type !== typeF) return false;
+    if (propF && r.property_name !== propF) return false;
+    if (search) {
+      const hay = Object.values(r).join(" ").toLowerCase();
+      if (!hay.includes(search)) return false;
+    }
+    return true;
+  });
+
+  rows.sort((a, b) => {
+    let va = a[col] ?? "", vb = b[col] ?? "";
+    if (col === "distance_mi") { va = parseFloat(va) || 0; vb = parseFloat(vb) || 0; }
+    else { va = String(va).toLowerCase(); vb = String(vb).toLowerCase(); }
+    if (va < vb) return asc ? -1 : 1;
+    if (va > vb) return asc ?  1 : -1;
+    return 0;
+  });
+
+  // Update sort arrows
+  document.querySelectorAll(`#head-${tab} th`).forEach(th => {
+    th.classList.remove("sort-asc", "sort-desc");
+    if (th.dataset.col === col) th.classList.add(asc ? "sort-asc" : "sort-desc");
+  });
+
+  const tbody = document.getElementById(`body-${tab}`);
+  tbody.innerHTML = "";
+  rows.forEach(r => {
+    const tr = document.createElement("tr");
+    const dist = parseFloat(r.distance_mi) || 0;
+    COLS.forEach(c => {
+      const td = document.createElement("td");
+      td.className = `${band(dist, tab)} ${c.cls}`.trim();
+      if (c.key === "event_url" && r[c.key]) {
+        td.innerHTML = `<a href="${escHtml(r[c.key])}" target="_blank" rel="noopener">Link</a>`;
+      } else if (c.key === "distance_mi") {
+        td.textContent = dist ? dist.toFixed(2) : "";
+      } else {
+        td.textContent = r[c.key] ?? "";
+      }
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+
+  document.getElementById(`count-${tab}`).textContent =
+    `${rows.length} event${rows.length !== 1 ? "s" : ""}`;
+  document.getElementById(`tbl-${tab}`).style.display = rows.length ? "" : "none";
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;");
+}
+
+function populateFilters(tab) {
+  const rows = DATA[tab]?.rows || [];
+  ["type","prop"].forEach(kind => {
+    const key = kind === "type" ? "event_type" : "property_name";
+    const sel = document.getElementById(`${kind}-${tab}`);
+    const vals = [...new Set(rows.map(r => r[key]).filter(Boolean))].sort();
+    vals.forEach(v => {
+      const opt = document.createElement("option");
+      opt.value = v; opt.textContent = v;
+      sel.appendChild(opt);
+    });
+  });
+}
+
+function switchTab(tab) {
+  activeTab = tab;
+  document.querySelectorAll(".tab").forEach((el, i) => {
+    el.classList.toggle("active", ["general","no_kings"][i] === tab);
+  });
+  document.querySelectorAll(".tab-panel").forEach(el => {
+    el.classList.toggle("active", el.id === `panel-${tab}`);
+  });
+}
+
+async function init() {
+  try {
+    const res = await fetch("dashboard_data.json?v=" + Date.now());
+    if (!res.ok) throw new Error(res.statusText);
+    const json = await res.json();
+    DATA = json;
+
+    document.getElementById("loading").style.display = "none";
+    document.getElementById("gen-time").textContent = "Generated: " + json.generated;
+    document.getElementById("gen-footer").textContent = "Data source: Mobilize.us  •  Generated: " + json.generated;
+    document.getElementById("sub-general").textContent  = json.general?.subtitle  || "";
+    document.getElementById("sub-no_kings").textContent = json.no_kings?.subtitle || "";
+
+    ["general","no_kings"].forEach(tab => {
+      buildHeader(tab);
+      populateFilters(tab);
+      document.getElementById(`tbl-${tab}`).style.display = "";
+      render(tab);
+    });
+  } catch(e) {
+    document.getElementById("loading").id = "error";
+    document.getElementById("error").textContent =
+      "Could not load dashboard_data.json. Run the tracker workflow first.";
+  }
+}
+
+init();
+</script>
+</body>
+</html>
