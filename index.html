@@ -1153,8 +1153,8 @@ function initMap() {
         ${r.event_url ? `<a href="${escHtml(r.event_url)}" target="_blank" rel="noopener">View event ↗</a>` : ""}
       </div>`;
       L.circleMarker([lat, lon], {
-        radius: 7, fillColor: bandColor(dist), color: "#fff",
-        weight: 1.5, opacity: 1, fillOpacity: 0.85
+        radius: 10, fillColor: bandColor(dist), color: "#fff",
+        weight: 2, opacity: 1, fillOpacity: 0.88
       }).bindPopup(popup).addTo(layer);
       bounds.push([lat, lon]);
 
@@ -1175,7 +1175,8 @@ function initMap() {
 
   addMarkers(gen, genLayer);
   addMarkers(nk, nkLayer);
-  [genLayer, nkLayer, propLayer].forEach(l => l.addTo(MAP));
+  /* Add property layer first so event dots render on top */
+  [propLayer, genLayer, nkLayer].forEach(l => l.addTo(MAP));
 
   L.control.layers(null, {
     "3-Day Events": genLayer,
