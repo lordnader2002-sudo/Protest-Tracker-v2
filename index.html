@@ -650,25 +650,29 @@
     .band-green  { background: #e0f4e0 !important; }
   }
 
-  /* Responsive additions for new tabs */
-  @media (max-width: 768px) {
-    .trends-grid { grid-template-columns: 1fr; }
-    .org-name    { width: 130px; }
-    .org-types   { display: none; }
-  }
-  @media (max-width: 640px) {
-    #map-el { height: calc(100vh - 90px); }
-    .tl-col { min-width: 130px; }
-  }
-
   /* ── Responsive ────────────────────────────────────────────────────── */
 
-  /* Tablet — KPI strip reflowing starts here */
+  /* Always make tab bar scrollable — 7 tabs won't fit on narrow screens */
+  .tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+
+  /* Table wrapper — touch-friendly horizontal scroll */
+  .table-wrap { -webkit-overflow-scrolling: touch; }
+
+  /* Tablet — 900px */
   @media (max-width: 900px) {
     .kpi-strip { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }
   }
 
-  /* Mobile */
+  /* Tablet — 768px */
+  @media (max-width: 768px) {
+    .trends-grid { grid-template-columns: 1fr; }
+    .org-name    { width: 130px; }
+    .org-types   { display: none; }
+    .panel-card  { margin: 12px; }
+  }
+
+  /* Mobile — 640px */
   @media (max-width: 640px) {
     /* Header */
     header { padding: 10px 14px; gap: 8px; }
@@ -677,17 +681,23 @@
     #dl-excel  { display: none; }
     #theme-toggle { font-size: 10px; padding: 5px 10px; }
 
-    /* Tab bar — horizontally scrollable, larger touch target */
-    .tabs { padding: 0 8px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    /* Tab bar */
+    .tabs { padding: 0 6px; }
     .tab  { padding: 11px 14px; font-size: 11px; white-space: nowrap; }
 
     /* Panel card */
     .panel-card { margin: 8px; border-radius: 12px; }
 
-    /* Toolbar — search grows full-width first, selects + badge wrap below */
-    .toolbar { padding: 8px 10px; gap: 8px; }
+    /* Toolbar — search full-width, selects grow, badge wraps */
+    .toolbar { padding: 8px 10px; gap: 6px; }
     .toolbar input[type=text] { width: 100%; }
+    .toolbar select { flex: 1; min-width: 0; }
     .badge { margin-left: 0; }
+
+    /* Tables */
+    td { font-size: 11px; padding: 5px 8px; }
+    td.wrap { max-width: 200px; }
+    thead th { font-size: 10px; padding: 8px 8px; }
 
     /* Summary */
     .sum-outer { padding: 8px; }
@@ -698,8 +708,50 @@
     .threat-banner { padding: 8px 12px; }
     .threat-desc   { display: none; }
 
-    /* Legend — tighter wrap */
+    /* Legend */
     .legend { gap: 8px; padding: 8px 12px; }
+    .legend-divider { display: none; }
+
+    /* Map */
+    #map-el { height: calc(100vh - 90px); }
+
+    /* Timeline */
+    .tl-col { min-width: 130px; }
+    .tl-event { font-size: 11px; }
+
+    /* Timeline modal */
+    #tl-modal { max-width: 100%; width: 96%; }
+    .tl-modal-key { width: 105px; }
+
+    /* Organizers */
+    .org-outer { padding: 12px; }
+    .org-name  { width: 110px; }
+    .org-track { width: 60px; }
+
+    /* Trends */
+    .trends-outer { padding: 12px; }
+  }
+
+  /* Extra-small — 400px */
+  @media (max-width: 400px) {
+    header h1 { font-size: 12px; }
+    .tab { padding: 10px 10px; font-size: 10px; }
+    .panel-card { margin: 4px; border-radius: 10px; }
+    .kpi-strip { grid-template-columns: 1fr 1fr; }
+    .kpi-val   { font-size: 22px; }
+
+    /* Tables: allow smaller text to show more on screen */
+    td { font-size: 10px; padding: 4px 6px; }
+    thead th { font-size: 9px; padding: 7px 6px; }
+
+    /* Organizers: hide bar on tiny screens */
+    .org-name  { width: 140px; }
+    .org-track { display: none; }
+
+    /* Timeline modal full-screen feel */
+    #tl-modal { width: 100%; border-radius: 12px 12px 0 0; }
+    #tl-modal-overlay { align-items: flex-end; }
+    .tl-modal-key { width: 90px; }
   }
 
   /* ── Footer ────────────────────────────────────────────────────────── */
@@ -1189,7 +1241,7 @@ function initMap() {
       const lat = parseFloat(r.event_lat), lon = parseFloat(r.event_lon);
       if (!lat || !lon || isNaN(lat) || isNaN(lon)) return;
       const dist = parseFloat(r.distance_mi) || 0;
-      const popup = `<div style="min-width:200px;font-size:12px;line-height:1.55">
+      const popup = `<div style="min-width:min(200px,80vw);font-size:12px;line-height:1.55">
         <b>${escHtml(r.event_title)}</b><br>
         <span style="color:#888">${escHtml(r.event_date)}</span><br>
         <b>Type:</b> ${escHtml(r.event_type)}<br>
