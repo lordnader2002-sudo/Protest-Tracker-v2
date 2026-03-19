@@ -125,8 +125,8 @@ COLUMNS = [
     ("Is New?",                 "is_new",            8),
     ("Duplicate?",              "is_duplicate",      10),
     ("Recurring?",              "is_recurring",      10),
-    ("Notes",                   "notes",            30),
     ("First Seen",              "first_seen",       12),
+    ("Notes",                   "notes",            60),
 ]
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
