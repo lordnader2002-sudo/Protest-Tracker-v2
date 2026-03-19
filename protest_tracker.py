@@ -303,6 +303,9 @@ def expand_event(event: dict, prop: dict, stats: dict | None = None) -> list[dic
         .astimezone(_EASTERN).strftime("%b %d, %Y")
         if created_unix else ""
     )
+    sponsor_name = ((event.get("sponsor") or {}).get("name") or "").strip()
+    e_lat = round(float(elat), 6) if elat is not None else ""
+    e_lon = round(float(elon), 6) if elon is not None else ""
     rows = []
     for ts in event.get("timeslots") or []:
         start_unix = ts.get("start_date")
@@ -322,6 +325,11 @@ def expand_event(event: dict, prop: dict, stats: dict | None = None) -> list[dic
             "distance_mi":    round(dist, 2),
             "event_url":      browser_url,
             "first_seen":     first_seen,
+            "sponsor_name":   sponsor_name,
+            "event_lat":      e_lat,
+            "event_lon":      e_lon,
+            "prop_lat":       round(float(prop["lat"]), 6),
+            "prop_lon":       round(float(prop["lon"]), 6),
         })
     return rows
 
@@ -942,6 +950,43 @@ def build_excel(general_rows: list[dict], no_kings_rows: list[dict],
     print(f"\n  ✓ Excel workbook saved → {output_path}")
 
 
+def update_trend_data(general_rows: list[dict], no_kings_rows: list[dict],
+                       path: str = "trend_data.json") -> None:
+    """Append a summary entry to trend_data.json for historical charting."""
+    import json as _json
+
+    def _band_counts(rows):
+        red   = sum(1 for r in rows if (float(r.get("distance_mi") or 9999)) < 1)
+        amber = sum(1 for r in rows if 1 <= (float(r.get("distance_mi") or 9999)) < 2)
+        green = sum(1 for r in rows if (float(r.get("distance_mi") or 9999)) >= 2)
+        new   = sum(1 for r in rows if str(r.get("is_new", "")).lower() == "yes")
+        return red, amber, green, new
+
+    now = datetime.now(_EASTERN)
+    gr, ga, gg, gn = _band_counts(general_rows)
+    nr, na, ng, nn = _band_counts(no_kings_rows)
+    entry = {
+        "ts":        now.isoformat(timespec="seconds"),
+        "label":     now.strftime("%b %d"),
+        "gen_total": len(general_rows),
+        "gen_new":   gn,
+        "gen_red":   gr, "gen_amber": ga, "gen_green": gg,
+        "nk_total":  len(no_kings_rows),
+        "nk_new":    nn,
+        "nk_red":    nr, "nk_amber":  na, "nk_green":  ng,
+    }
+    try:
+        with open(path) as f:
+            data = _json.load(f)
+    except (FileNotFoundError, ValueError):
+        data = {"runs": []}
+    data["runs"].append(entry)
+    data["runs"] = data["runs"][-120:]          # keep last 120 runs (~4 months daily)
+    with open(path, "w") as f:
+        _json.dump(data, f)
+    print(f"  ✓ Trend data updated      → {path}  ({len(data['runs'])} runs)")
+
+
 def build_dashboard_json(general_rows: list[dict], no_kings_rows: list[dict],
                           output_path: str = "dashboard_data.json") -> None:
     import json as _json
@@ -949,10 +994,15 @@ def build_dashboard_json(general_rows: list[dict], no_kings_rows: list[dict],
     end_3d  = (now + timedelta(days=DAYS_GENERAL)).strftime("%B %d, %Y")
     end_30d = (now + timedelta(days=DAYS_NO_KINGS)).strftime("%B %d, %Y")
 
+    _DASHBOARD_EXTRA = ["event_lat", "event_lon", "prop_lat", "prop_lon", "sponsor_name"]
+
     def _clean(rows):
         out = []
         for r in sorted(rows, key=lambda x: x.get("distance_mi", 9999)):
-            out.append({k: r.get(k, "") for _, k, _ in COLUMNS})
+            d = {k: r.get(k, "") for _, k, _ in COLUMNS}
+            for key in _DASHBOARD_EXTRA:
+                d[key] = r.get(key, "")
+            out.append(d)
         return out
 
     payload = {
@@ -971,6 +1021,7 @@ def build_dashboard_json(general_rows: list[dict], no_kings_rows: list[dict],
     with open(output_path, "w") as f:
         _json.dump(payload, f)
     print(f"  ✓ Dashboard JSON saved  → {output_path}")
+    update_trend_data(general_rows, no_kings_rows)
 
 
 # ── Entry point ────────────────────────────────────────────────────────────────

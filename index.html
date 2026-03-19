@@ -7,6 +7,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <style>
   /* ── Theme tokens ──────────────────────────────────────────────────── */
   :root {
@@ -480,6 +483,149 @@
     color: var(--accent-nk); width: 18px; text-align: right; flex-shrink: 0;
   }
 
+  /* ── Export buttons ────────────────────────────────────────────────── */
+  .btn-export {
+    border: none; outline: none; border-radius: 8px; padding: 5px 12px;
+    font-size: 11px; font-weight: 500; font-family: inherit; cursor: pointer;
+    white-space: nowrap; background: var(--bg); color: var(--fg);
+    box-shadow: var(--neu-raised-sm); transition: box-shadow .14s, transform .14s;
+    touch-action: manipulation;
+  }
+  .btn-export:hover  { transform: translateY(-1px); box-shadow: var(--neu-raised); }
+  .btn-export:active { box-shadow: var(--neu-inset-sm); transform: translateY(0); }
+
+  /* ── Map tab ────────────────────────────────────────────────────────── */
+  #map-el {
+    height: calc(100vh - 108px);
+    width: 100%;
+  }
+  .leaflet-popup-content { font-family: "Inter", sans-serif; font-size: 12px; line-height: 1.5; }
+  .leaflet-popup-content b { color: #1e2a3a; }
+  .map-legend {
+    background: var(--bg); padding: 8px 12px; border-radius: 10px;
+    box-shadow: var(--neu-raised-sm); font-size: 10px; line-height: 1.8;
+  }
+  .map-legend-dot {
+    display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+    margin-right: 5px; vertical-align: middle;
+  }
+
+  /* ── Timeline tab ───────────────────────────────────────────────────── */
+  .tl-toolbar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 10px 18px; background: var(--bg); border-bottom: 1px solid var(--border);
+  }
+  .tl-hint { font-size: 11px; color: var(--fg-muted); flex: 1; }
+  .tl-scroll {
+    display: flex; overflow-x: auto; min-height: calc(100vh - 160px);
+    -webkit-overflow-scrolling: touch; align-items: flex-start;
+  }
+  .tl-col {
+    min-width: 155px; flex-shrink: 0;
+    border-right: 1px solid var(--border); padding-bottom: 16px;
+  }
+  .tl-date-hd {
+    padding: 7px 10px; font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .4px; color: #fff;
+    background: linear-gradient(to bottom, var(--th-bg-from), var(--th-bg-to));
+    text-align: center; position: sticky; top: 0; z-index: 1;
+  }
+  .tl-section-lbl {
+    font-size: 8.5px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .5px; color: var(--fg-muted); padding: 5px 8px 2px;
+    border-top: 1px solid var(--border);
+  }
+  .tl-section-lbl.nk { color: var(--accent-nk); }
+  .tl-event {
+    margin: 2px 5px; padding: 4px 6px; border-radius: 5px;
+    font-size: 10px; font-weight: 500; color: var(--fg);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    border: 1px solid rgba(0,0,0,.06); cursor: default;
+  }
+  .tl-event:hover { filter: brightness(.9); }
+  .tl-empty {
+    padding: 60px; text-align: center; color: var(--fg-muted);
+    font-size: 13px; width: 100%;
+  }
+
+  /* ── Trends tab ─────────────────────────────────────────────────────── */
+  .trends-outer { padding: 20px; }
+  .trends-grid  { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .trends-card  {
+    background: var(--bg); border-radius: 14px;
+    box-shadow: var(--neu-raised); padding: 18px 20px;
+  }
+  .trends-card-title {
+    font-size: 9.5px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .7px; color: var(--fg-muted); margin-bottom: 14px;
+  }
+  #trends-placeholder {
+    text-align: center; padding: 60px; color: var(--fg-muted); font-size: 13px;
+  }
+
+  /* ── Organizers tab ─────────────────────────────────────────────────── */
+  .org-outer { padding: 20px; }
+  .org-sec    { max-width: 900px; }
+  .org-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 5px 0; border-bottom: 1px solid var(--td-border-color);
+  }
+  .org-row:last-child { border-bottom: none; }
+  .org-i {
+    font-size: 9px; font-weight: 700; color: var(--fg-muted);
+    width: 16px; text-align: center; flex-shrink: 0; font-variant-numeric: tabular-nums;
+  }
+  .org-name {
+    width: 200px; font-size: 11px; font-weight: 600; color: var(--fg);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0;
+  }
+  .org-types {
+    flex: 1; font-size: 10px; color: var(--fg-muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .org-track {
+    width: 90px; height: 6px; border-radius: 3px;
+    background: var(--bg); box-shadow: var(--neu-inset-sm); overflow: hidden; flex-shrink: 0;
+  }
+  .org-fill {
+    height: 100%; border-radius: 3px; width: 0;
+    background: linear-gradient(90deg, var(--th-bg-from), var(--th-bg-to));
+    transition: width .7s cubic-bezier(.25,.46,.45,.94);
+  }
+  .org-n {
+    font-size: 10px; font-weight: 700; font-variant-numeric: tabular-nums;
+    color: var(--accent); width: 22px; text-align: right; flex-shrink: 0;
+  }
+  .org-empty {
+    padding: 40px; text-align: center; color: var(--fg-muted); font-size: 13px;
+  }
+
+  /* ── Print / PDF ────────────────────────────────────────────────────── */
+  @media print {
+    header, .tabs, .toolbar, .subtitle-bar, .legend, .generated,
+    .btn-export, #panel-map, #panel-timeline, #panel-trends,
+    #panel-organizers, #panel-summary { display: none !important; }
+    .tab-panel { display: none !important; }
+    .tab-panel.active { display: block !important; }
+    .panel-card { box-shadow: none !important; margin: 0 !important; border-radius: 0 !important; }
+    body { background: #fff !important; color: #000 !important; font-size: 10px; }
+    td, th { font-size: 8px !important; padding: 3px 6px !important; }
+    .band-red    { background: #ffe0e0 !important; }
+    .band-amber  { background: #fff3c0 !important; }
+    .band-green  { background: #e0f4e0 !important; }
+  }
+
+  /* Responsive additions for new tabs */
+  @media (max-width: 768px) {
+    .trends-grid { grid-template-columns: 1fr; }
+    .org-name    { width: 130px; }
+    .org-types   { display: none; }
+  }
+  @media (max-width: 640px) {
+    #map-el { height: calc(100vh - 90px); }
+    .tl-col { min-width: 130px; }
+  }
+
   /* ── Responsive ────────────────────────────────────────────────────── */
 
   /* Tablet — KPI strip reflowing starts here */
@@ -574,9 +720,13 @@
 
 <!-- ── Tabs ── -->
 <div class="tabs">
-  <div class="tab active" data-tab="summary"  onclick="switchTab('summary')">Summary</div>
-  <div class="tab"        data-tab="general"  onclick="switchTab('general')">3-Day Events</div>
-  <div class="tab"        data-tab="no_kings" onclick="switchTab('no_kings')">No Kings (30-Day)</div>
+  <div class="tab active" data-tab="summary"    onclick="switchTab('summary')">Summary</div>
+  <div class="tab"        data-tab="map"        onclick="switchTab('map')">Map</div>
+  <div class="tab"        data-tab="timeline"   onclick="switchTab('timeline')">Timeline</div>
+  <div class="tab"        data-tab="general"    onclick="switchTab('general')">3-Day Events</div>
+  <div class="tab"        data-tab="no_kings"   onclick="switchTab('no_kings')">No Kings (30-Day)</div>
+  <div class="tab"        data-tab="organizers" onclick="switchTab('organizers')">Organizers</div>
+  <div class="tab"        data-tab="trends"     onclick="switchTab('trends')">Trends</div>
 </div>
 
 <!-- ── Summary panel ── -->
@@ -663,6 +813,50 @@
   </div><!-- /sum-outer -->
 </div>
 
+<!-- ── Map panel ── -->
+<div id="panel-map" class="tab-panel">
+  <div id="map-el"></div>
+</div>
+
+<!-- ── Timeline panel ── -->
+<div id="panel-timeline" class="tab-panel">
+  <div class="tl-toolbar">
+    <span class="tl-hint">Events grouped by date · colored by proximity band · scroll right to see all dates</span>
+    <button class="btn-export" onclick="exportCSV(activeTab === 'timeline' ? 'general' : 'general')">⬇ CSV (3-Day)</button>
+  </div>
+  <div class="tl-scroll" id="tl-el"></div>
+</div>
+
+<!-- ── Trends panel ── -->
+<div id="panel-trends" class="tab-panel">
+  <div class="trends-outer">
+    <div id="trends-placeholder">No trend data yet — run the tracker a few times to see historical charts.</div>
+    <div class="trends-grid" id="trends-grid" style="display:none">
+      <div class="trends-card">
+        <div class="trends-card-title">Event Volume Over Time</div>
+        <canvas id="chart-totals"></canvas>
+      </div>
+      <div class="trends-card">
+        <div class="trends-card-title">3-Day Proximity Breakdown</div>
+        <canvas id="chart-bands"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Organizers panel ── -->
+<div id="panel-organizers" class="tab-panel">
+  <div class="org-outer">
+    <div class="sum-sec org-sec">
+      <div class="sum-sec-hd">
+        <div class="sum-sec-accent"></div>
+        <span class="sum-sec-title">Event Organizers — Combined Activity (3-Day + No Kings)</span>
+      </div>
+      <div class="sum-sec-bd" id="org-list"></div>
+    </div>
+  </div>
+</div>
+
 <!-- ── 3-Day panel ── -->
 <div id="panel-general" class="tab-panel">
   <div class="panel-card">
@@ -674,6 +868,8 @@
       <select id="prop-general" onchange="render('general')">
         <option value="">All properties</option>
       </select>
+      <button class="btn-export" onclick="exportCSV('general')">⬇ CSV</button>
+      <button class="btn-export" onclick="exportPrint()">🖨 Print</button>
       <span class="badge badge-general" id="count-general">0 events</span>
     </div>
     <div class="subtitle-bar" id="sub-general"></div>
@@ -710,6 +906,8 @@
       <select id="prop-no_kings" onchange="render('no_kings')">
         <option value="">All properties</option>
       </select>
+      <button class="btn-export" onclick="exportCSV('no_kings')">⬇ CSV</button>
+      <button class="btn-export" onclick="exportPrint()">🖨 Print</button>
       <span class="badge badge-nk" id="count-no_kings">0 events</span>
     </div>
     <div class="subtitle-bar" id="sub-no_kings"></div>
@@ -746,7 +944,6 @@ const COLS = [
   { key: "is_duplicate",   label: "Dup?",              cls: "flag" },
   { key: "is_recurring",   label: "Recur?",            cls: "flag" },
   { key: "first_seen",     label: "First Seen",        cls: "firstseen" },
-  { key: "notes",          label: "Notes",             cls: "notes" },
 ];
 
 const FLAG_KEYS = new Set(["is_new","is_duplicate","is_recurring"]);
@@ -754,6 +951,7 @@ const FLAG_KEYS = new Set(["is_new","is_duplicate","is_recurring"]);
 let DATA = {};
 let sortState = { general: { col: "distance_mi", asc: true }, no_kings: { col: "distance_mi", asc: true } };
 let activeTab = "summary";
+const visibleRows = { general: [], no_kings: [] };
 
 /* ── Dark mode ──────────────────────────────────────────────────────── */
 function toggleTheme() {
@@ -856,10 +1054,31 @@ function render(tab) {
     tbody.appendChild(tr);
   });
 
+  visibleRows[tab] = rows;
   document.getElementById(`count-${tab}`).textContent =
     `${rows.length} event${rows.length !== 1 ? "s" : ""}`;
   document.getElementById(`tbl-${tab}`).style.display = rows.length ? "" : "none";
 }
+
+/* ── Export ─────────────────────────────────────────────────────────── */
+function exportCSV(tab) {
+  const rows = visibleRows[tab] || [];
+  const cols = COLS.filter(c => c.key !== "event_url");
+  const lines = [
+    cols.map(c => `"${c.label}"`).join(","),
+    ...rows.map(r => cols.map(c => {
+      const v = String(r[c.key] ?? "");
+      return `"${v.replace(/"/g, '""')}"`;
+    }).join(","))
+  ];
+  const a = Object.assign(document.createElement("a"), {
+    href: URL.createObjectURL(new Blob(["\ufeff" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" })),
+    download: `protest_events_${tab}_${new Date().toISOString().slice(0,10)}.csv`
+  });
+  a.click(); URL.revokeObjectURL(a.href);
+}
+
+function exportPrint() { window.print(); }
 
 function escHtml(s) {
   return s.replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;");
@@ -886,6 +1105,265 @@ function switchTab(tab) {
   });
   document.querySelectorAll(".tab-panel").forEach(el => {
     el.classList.toggle("active", el.id === `panel-${tab}`);
+  });
+  if (tab === "map")        requestAnimationFrame(initMap);
+  if (tab === "timeline")   buildTimeline();
+  if (tab === "trends")     loadTrends();
+  if (tab === "organizers") buildOrganizers();
+}
+
+/* ── Map ────────────────────────────────────────────────────────────── */
+let MAP = null;
+
+function initMap() {
+  if (!window.L) return;
+  if (MAP) { MAP.invalidateSize(); return; }
+
+  MAP = L.map("map-el").setView([39.5, -98.35], 5);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution: '&copy; <a href="https://openstreetmap.org">OpenStreetMap</a> contributors',
+    maxZoom: 19
+  }).addTo(MAP);
+
+  const gen  = DATA.general?.rows  || [];
+  const nk   = DATA.no_kings?.rows || [];
+
+  const genLayer   = L.layerGroup();
+  const nkLayer    = L.layerGroup();
+  const propLayer  = L.layerGroup();
+  const propsSeen  = {};
+  const bounds     = [];
+
+  function bandColor(dist) {
+    return dist < 1 ? "#ef4444" : dist < 2 ? "#f59e0b" : "#22c55e";
+  }
+
+  function addMarkers(rows, layer) {
+    rows.forEach(r => {
+      const lat = parseFloat(r.event_lat), lon = parseFloat(r.event_lon);
+      if (!lat || !lon || isNaN(lat) || isNaN(lon)) return;
+      const dist = parseFloat(r.distance_mi) || 0;
+      const popup = `<div style="min-width:200px;font-size:12px;line-height:1.55">
+        <b>${escHtml(r.event_title)}</b><br>
+        <span style="color:#888">${escHtml(r.event_date)}</span><br>
+        <b>Type:</b> ${escHtml(r.event_type)}<br>
+        <b>Location:</b> ${escHtml(r.event_location)}<br>
+        <b>Distance:</b> ${dist.toFixed(2)} mi · ${escHtml(r.property_name)}<br>
+        ${r.sponsor_name ? `<b>Organizer:</b> ${escHtml(r.sponsor_name)}<br>` : ""}
+        ${r.event_url ? `<a href="${escHtml(r.event_url)}" target="_blank" rel="noopener">View event ↗</a>` : ""}
+      </div>`;
+      L.circleMarker([lat, lon], {
+        radius: 7, fillColor: bandColor(dist), color: "#fff",
+        weight: 1.5, opacity: 1, fillOpacity: 0.85
+      }).bindPopup(popup).addTo(layer);
+      bounds.push([lat, lon]);
+
+      const pk = r.property_name;
+      if (!propsSeen[pk]) {
+        const plat = parseFloat(r.prop_lat), plon = parseFloat(r.prop_lon);
+        if (plat && plon && !isNaN(plat)) {
+          propsSeen[pk] = true;
+          L.circleMarker([plat, plon], {
+            radius: 11, fillColor: "#1d4ed8", color: "#fff",
+            weight: 2, opacity: 1, fillOpacity: 0.92
+          }).bindPopup(`<b>🏢 ${escHtml(pk)}</b>`).addTo(propLayer);
+          bounds.push([plat, plon]);
+        }
+      }
+    });
+  }
+
+  addMarkers(gen, genLayer);
+  addMarkers(nk, nkLayer);
+  [genLayer, nkLayer, propLayer].forEach(l => l.addTo(MAP));
+
+  L.control.layers(null, {
+    "3-Day Events": genLayer,
+    "No Kings Events": nkLayer,
+    "Properties": propLayer
+  }, { collapsed: false }).addTo(MAP);
+
+  /* custom legend */
+  const legend = L.control({ position: "bottomleft" });
+  legend.onAdd = () => {
+    const div = L.DomUtil.create("div", "map-legend");
+    div.innerHTML = [
+      ["#ef4444","< 1 mi"],["#f59e0b","1–2 mi"],["#22c55e","> 2 mi"],["#1d4ed8","Property"]
+    ].map(([c,l]) => `<span class="map-legend-dot" style="background:${c}"></span>${l}`).join("<br>");
+    return div;
+  };
+  legend.addTo(MAP);
+
+  if (bounds.length) MAP.fitBounds(L.latLngBounds(bounds), { padding: [40, 40] });
+}
+
+/* ── Timeline ───────────────────────────────────────────────────────── */
+let timelineBuilt = false;
+
+function buildTimeline() {
+  if (timelineBuilt) return;
+  timelineBuilt = true;
+
+  const el = document.getElementById("tl-el");
+  if (!el) return;
+
+  const gen = DATA.general?.rows  || [];
+  const nk  = DATA.no_kings?.rows || [];
+
+  function parseDate(str) {
+    const m = (str || "").match(/^([A-Za-z]+ \d+, \d+)/);
+    return m ? m[1] : null;
+  }
+
+  const dateMap = {};
+  gen.forEach(r => {
+    const d = parseDate(r.event_date); if (!d) return;
+    if (!dateMap[d]) dateMap[d] = { gen: [], nk: [] };
+    dateMap[d].gen.push(r);
+  });
+  nk.forEach(r => {
+    const d = parseDate(r.event_date); if (!d) return;
+    if (!dateMap[d]) dateMap[d] = { gen: [], nk: [] };
+    dateMap[d].nk.push(r);
+  });
+
+  const dates = Object.keys(dateMap).sort((a, b) => new Date(a) - new Date(b));
+  el.innerHTML = "";
+
+  if (!dates.length) {
+    el.innerHTML = `<div class="tl-empty">No events to display.</div>`;
+    return;
+  }
+
+  dates.forEach(date => {
+    const col = document.createElement("div"); col.className = "tl-col";
+    const hd  = document.createElement("div"); hd.className  = "tl-date-hd";
+    hd.textContent = date.replace(/, \d{4}/, "");
+    col.appendChild(hd);
+
+    function addChips(events, isNk) {
+      if (!events.length) return;
+      const lbl = document.createElement("div");
+      lbl.className = "tl-section-lbl" + (isNk ? " nk" : "");
+      lbl.textContent = isNk ? "No Kings" : "3-Day";
+      col.appendChild(lbl);
+      events.forEach(r => {
+        const dist = parseFloat(r.distance_mi) || 0;
+        const bc   = dist < 1 ? "band-red" : dist < 2 ? "band-amber" : "band-green";
+        const chip = document.createElement("div");
+        chip.className = `tl-event ${bc}`;
+        chip.textContent = r.event_title;
+        chip.title = `${r.event_title}\n${r.event_date}\n${dist.toFixed(2)} mi · ${r.property_name}${r.sponsor_name ? "\n" + r.sponsor_name : ""}`;
+        col.appendChild(chip);
+      });
+    }
+
+    addChips(dateMap[date].gen, false);
+    addChips(dateMap[date].nk, true);
+    el.appendChild(col);
+  });
+}
+
+/* ── Trends ─────────────────────────────────────────────────────────── */
+let TREND_DATA  = null;
+let chartTotals = null;
+let chartBands  = null;
+
+async function loadTrends() {
+  if (TREND_DATA) return;
+  try {
+    const res = await fetch("trend_data.json?v=" + Date.now());
+    if (!res.ok) throw new Error("not found");
+    TREND_DATA = await res.json();
+    const grid = document.getElementById("trends-grid");
+    const ph   = document.getElementById("trends-placeholder");
+    const runs = TREND_DATA?.runs || [];
+    if (!runs.length) { ph.textContent = "No trend data yet — run the tracker a few times."; return; }
+    ph.style.display = "none";
+    grid.style.display = "";
+    renderTrends(runs);
+  } catch {
+    document.getElementById("trends-placeholder").textContent =
+      "No trend data yet — trend_data.json is created automatically after the first tracker run.";
+  }
+}
+
+function renderTrends(runs) {
+  const labels = runs.map(r => r.label);
+  const fg = "#6b7a93";
+
+  if (chartTotals) chartTotals.destroy();
+  chartTotals = new Chart(document.getElementById("chart-totals"), {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        { label: "3-Day Events",    data: runs.map(r => r.gen_total), borderColor: "#3b82f6", backgroundColor: "rgba(59,130,246,.12)", tension: 0.35, fill: true, pointRadius: 3 },
+        { label: "No Kings Events", data: runs.map(r => r.nk_total),  borderColor: "#8b5cf6", backgroundColor: "rgba(139,92,246,.12)", tension: 0.35, fill: true, pointRadius: 3 }
+      ]
+    },
+    options: { responsive: true, plugins: { legend: { labels: { color: fg } } }, scales: { x: { ticks: { color: fg } }, y: { beginAtZero: true, ticks: { color: fg } } } }
+  });
+
+  if (chartBands) chartBands.destroy();
+  chartBands = new Chart(document.getElementById("chart-bands"), {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [
+        { label: "< 1 mi",  data: runs.map(r => r.gen_red),   backgroundColor: "#ef4444", stack: "g" },
+        { label: "1–2 mi",  data: runs.map(r => r.gen_amber), backgroundColor: "#f59e0b", stack: "g" },
+        { label: "> 2 mi",  data: runs.map(r => r.gen_green), backgroundColor: "#22c55e", stack: "g" }
+      ]
+    },
+    options: { responsive: true, plugins: { legend: { labels: { color: fg } } }, scales: { x: { stacked: true, ticks: { color: fg } }, y: { stacked: true, beginAtZero: true, ticks: { color: fg } } } }
+  });
+}
+
+/* ── Organizers ─────────────────────────────────────────────────────── */
+let organizersBuilt = false;
+
+function buildOrganizers() {
+  if (organizersBuilt) return;
+  organizersBuilt = true;
+
+  const el = document.getElementById("org-list");
+  if (!el) return;
+
+  const gen = DATA.general?.rows  || [];
+  const nk  = DATA.no_kings?.rows || [];
+  const orgMap = {};
+
+  [...gen, ...nk].forEach(r => {
+    const org = (r.sponsor_name || "").trim() || "(No organizer listed)";
+    if (!orgMap[org]) orgMap[org] = { count: 0, types: new Set() };
+    orgMap[org].count++;
+    if (r.event_type) orgMap[org].types.add(r.event_type);
+  });
+
+  const sorted = Object.entries(orgMap).sort((a, b) => b[1].count - a[1].count);
+  const maxN   = sorted[0]?.[1].count || 1;
+
+  if (!sorted.length) {
+    el.innerHTML = `<div class="org-empty">No organizer data available yet.</div>`;
+    return;
+  }
+
+  el.innerHTML = "";
+  sorted.slice(0, 30).forEach(([name, d], i) => {
+    const row   = document.createElement("div"); row.className = "org-row";
+    const idx   = document.createElement("span"); idx.className = "org-i"; idx.textContent = i + 1;
+    const nm    = document.createElement("span"); nm.className = "org-name"; nm.title = name; nm.textContent = name;
+    const types = document.createElement("span"); types.className = "org-types"; types.textContent = [...d.types].join(", ");
+    const track = document.createElement("div"); track.className = "org-track";
+    const fill  = document.createElement("div"); fill.className  = "org-fill";
+    track.appendChild(fill);
+    const cnt = document.createElement("span"); cnt.className = "org-n"; cnt.textContent = d.count;
+    row.append(idx, nm, types, track, cnt);
+    el.appendChild(row);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      fill.style.width = (d.count / maxN * 100) + "%";
+    }));
   });
 }
 
@@ -1045,6 +1523,8 @@ async function init() {
       render(tab);
     });
     buildSummary();
+    buildTimeline();
+    buildOrganizers();
   } catch(e) {
     console.error("Dashboard init error:", e);
     document.getElementById("loading").id = "error";
