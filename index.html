@@ -540,9 +540,44 @@
     margin: 2px 5px; padding: 4px 6px; border-radius: 5px;
     font-size: 10px; font-weight: 500; color: var(--fg);
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    border: 1px solid rgba(0,0,0,.06); cursor: default;
+    border: 1px solid rgba(0,0,0,.06); cursor: pointer;
   }
   .tl-event:hover { filter: brightness(.9); }
+
+  /* ── Timeline event modal ── */
+  #tl-modal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,.45); z-index: 9999;
+    align-items: center; justify-content: center;
+  }
+  #tl-modal-overlay.open { display: flex; }
+  #tl-modal {
+    background: var(--bg, #fff); border-radius: 10px;
+    box-shadow: 0 8px 32px rgba(0,0,0,.28);
+    max-width: 540px; width: 92%; max-height: 80vh;
+    overflow-y: auto; padding: 0;
+  }
+  #tl-modal-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 18px 10px; border-bottom: 1px solid rgba(0,0,0,.1);
+  }
+  #tl-modal-title { font-size: 14px; font-weight: 700; margin: 0; flex: 1; }
+  #tl-modal-close {
+    background: none; border: none; cursor: pointer;
+    font-size: 18px; line-height: 1; padding: 0 0 0 12px; color: #888;
+  }
+  #tl-modal-close:hover { color: #000; }
+  #tl-modal-body { padding: 12px 18px 18px; }
+  .tl-modal-row {
+    display: flex; gap: 10px; padding: 6px 0;
+    border-bottom: 1px solid rgba(0,0,0,.06); font-size: 12px;
+  }
+  .tl-modal-row:last-child { border-bottom: none; }
+  .tl-modal-key {
+    width: 130px; flex-shrink: 0;
+    font-weight: 600; color: #555;
+  }
+  .tl-modal-val { color: var(--fg, #111); word-break: break-word; }
   .tl-empty {
     padding: 60px; text-align: center; color: var(--fg-muted);
     font-size: 13px; width: 100%;
@@ -825,6 +860,17 @@
     <button class="btn-export" onclick="exportCSV(activeTab === 'timeline' ? 'general' : 'general')">⬇ CSV (3-Day)</button>
   </div>
   <div class="tl-scroll" id="tl-el"></div>
+</div>
+
+<!-- Timeline event detail modal -->
+<div id="tl-modal-overlay" onclick="if(event.target===this)closeTlModal()">
+  <div id="tl-modal">
+    <div id="tl-modal-header">
+      <p id="tl-modal-title"></p>
+      <button id="tl-modal-close" onclick="closeTlModal()" aria-label="Close">✕</button>
+    </div>
+    <div id="tl-modal-body"></div>
+  </div>
 </div>
 
 <!-- ── Trends panel ── -->
@@ -1254,7 +1300,8 @@ function buildTimeline() {
         const chip = document.createElement("div");
         chip.className = `tl-event ${bc}`;
         chip.textContent = r.event_title;
-        chip.title = `${r.event_title}\n${r.event_date}\n${dist.toFixed(2)} mi · ${r.property_name}${r.sponsor_name ? "\n" + r.sponsor_name : ""}`;
+        chip._tlRow = r;
+        chip.addEventListener("click", () => openTlModal(r));
         col.appendChild(chip);
       });
     }
@@ -1263,6 +1310,51 @@ function buildTimeline() {
     addChips(dateMap[date].nk, true);
     el.appendChild(col);
   });
+}
+
+/* ── Timeline event modal ───────────────────────────────────────────── */
+const TL_MODAL_FIELDS = [
+  { key: "property_name",  label: "Property Name" },
+  { key: "event_title",    label: "Event Title"   },
+  { key: "event_type",     label: "Event Type"    },
+  { key: "event_date",     label: "Date & Time"   },
+  { key: "event_location", label: "Location"      },
+  { key: "distance_mi",    label: "Distance (mi)" },
+  { key: "sponsor_name",   label: "Organizer"     },
+  { key: "is_new",         label: "New?"          },
+  { key: "is_duplicate",   label: "Duplicate?"    },
+  { key: "is_recurring",   label: "Recurring?"    },
+  { key: "first_seen",     label: "First Seen"    },
+  { key: "event_url",      label: "URL"           },
+];
+
+function openTlModal(r) {
+  document.getElementById("tl-modal-title").textContent = r.event_title || "Event Details";
+  const body = document.getElementById("tl-modal-body");
+  body.innerHTML = "";
+  TL_MODAL_FIELDS.forEach(({ key, label }) => {
+    const val = r[key];
+    if (val === undefined || val === null || val === "") return;
+    const row = document.createElement("div");
+    row.className = "tl-modal-row";
+    const k = document.createElement("span"); k.className = "tl-modal-key"; k.textContent = label;
+    const v = document.createElement("span"); v.className = "tl-modal-val";
+    if (key === "event_url") {
+      const a = document.createElement("a");
+      a.href = val; a.target = "_blank"; a.rel = "noopener";
+      a.textContent = "View event ↗";
+      v.appendChild(a);
+    } else {
+      v.textContent = val;
+    }
+    row.appendChild(k); row.appendChild(v);
+    body.appendChild(row);
+  });
+  document.getElementById("tl-modal-overlay").classList.add("open");
+}
+
+function closeTlModal() {
+  document.getElementById("tl-modal-overlay").classList.remove("open");
 }
 
 /* ── Trends ─────────────────────────────────────────────────────────── */
