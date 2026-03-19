@@ -41,11 +41,16 @@
     --band-green-nk:    #ddd0fc;
 
     --flag-yes-color:   #16a34a;
+    --flag-new-color:   #16a34a;
+    --flag-dup-color:   #d97706;
+    --flag-rec-color:   #2563eb;
     --link-color:       #2563eb;
 
     --bar-red:          #ef4444;
     --bar-amber:        #f59e0b;
     --bar-green:        #22c55e;
+
+    --track-bg:         rgba(0,0,0,.08);
   }
 
   [data-theme="dark"] {
@@ -76,12 +81,34 @@
     --band-green-nk:    #1a1042;
 
     --flag-yes-color:   #4ade80;
+    --flag-new-color:   #22c55e;
+    --flag-dup-color:   #f59e0b;
+    --flag-rec-color:   #60a5fa;
     --link-color:       #60a5fa;
 
     --bar-red:          #f87171;
     --bar-amber:        #fbbf24;
     --bar-green:        #4ade80;
+
+    --track-bg:         rgba(255,255,255,.06);
   }
+
+  /* ── Dark mode specific overrides ─────────────────────────────────── */
+  [data-theme="dark"] .swatch {
+    border-color: rgba(255,255,255,.18);
+  }
+  [data-theme="dark"] #tl-modal {
+    background: #1e2535;
+    box-shadow: 0 8px 32px rgba(0,0,0,.6);
+  }
+  [data-theme="dark"] #tl-modal-header {
+    border-bottom-color: rgba(255,255,255,.1);
+  }
+  [data-theme="dark"] .tl-modal-row {
+    border-bottom-color: rgba(255,255,255,.06);
+  }
+  [data-theme="dark"] td.flag-no { color: #4e6080; }
+  [data-theme="dark"] #tl-modal-overlay { background: rgba(0,0,0,.65); }
 
   /* ── Base ──────────────────────────────────────────────────────────── */
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -314,11 +341,13 @@
   }
   .flag-pill {
     display: inline-flex; align-items: center; justify-content: center;
-    background: var(--flag-yes-color); color: #fff;
-    border-radius: 10px; padding: 1px 7px;
-    font-size: 10px; font-weight: 700;
+    color: #fff; border-radius: 10px; padding: 1px 7px;
+    font-size: 10px; font-weight: 700; letter-spacing: .3px;
     box-shadow: 1px 1px 3px rgba(0,0,0,.2);
   }
+  .flag-pill-new  { background: var(--flag-new-color); }
+  .flag-pill-dup  { background: var(--flag-dup-color); }
+  .flag-pill-rec  { background: var(--flag-rec-color); }
 
   /* ── Summary page ───────────────────────────────────────────────────── */
   .sum-outer { padding: 20px; }
@@ -422,7 +451,7 @@
   .prox-lbl { font-size: 10px; color: var(--fg-muted); width: 52px; flex-shrink: 0; }
   .prox-track {
     flex: 1; height: 10px; border-radius: 5px;
-    background: var(--bg); box-shadow: var(--neu-inset-sm); overflow: hidden;
+    background: var(--track-bg); box-shadow: var(--neu-inset-sm); overflow: hidden;
   }
   .prox-fill {
     height: 100%; border-radius: 5px; width: 0;
@@ -450,7 +479,7 @@
   }
   .rank-track {
     width: 56px; height: 5px; border-radius: 3px;
-    background: var(--bg); box-shadow: var(--neu-inset-sm);
+    background: var(--track-bg); box-shadow: var(--neu-inset-sm);
     overflow: hidden; flex-shrink: 0;
   }
   .rank-fill {
@@ -620,7 +649,7 @@
   }
   .org-track {
     width: 90px; height: 6px; border-radius: 3px;
-    background: var(--bg); box-shadow: var(--neu-inset-sm); overflow: hidden; flex-shrink: 0;
+    background: var(--track-bg); box-shadow: var(--neu-inset-sm); overflow: hidden; flex-shrink: 0;
   }
   .org-fill {
     height: 100%; border-radius: 3px; width: 0;
@@ -633,6 +662,61 @@
   }
   .org-empty {
     padding: 40px; text-align: center; color: var(--fg-muted); font-size: 13px;
+  }
+
+  /* ── Sticky toolbar ────────────────────────────────────────────────── */
+  .toolbar {
+    position: sticky; top: 0; z-index: 6;
+    background: var(--bg);
+  }
+  .subtitle-bar {
+    position: sticky; top: 57px; z-index: 5;
+    background: var(--bg);
+  }
+
+  /* ── Tab fade transition ────────────────────────────────────────────── */
+  @keyframes tabFadeIn {
+    from { opacity: 0; transform: translateY(5px); }
+    to   { opacity: 1; transform: translateY(0);   }
+  }
+  .tab-panel.active { animation: tabFadeIn .18s ease-out both; }
+
+  /* ── Scroll-to-top button ───────────────────────────────────────────── */
+  #scroll-top-btn {
+    position: fixed; bottom: 28px; right: 28px;
+    width: 44px; height: 44px; border-radius: 50%;
+    background: var(--accent); color: #fff;
+    border: none; cursor: pointer; font-size: 20px; line-height: 1;
+    box-shadow: 0 4px 16px rgba(37,99,235,.4);
+    opacity: 0; transform: translateY(14px) scale(.88);
+    transition: opacity .2s, transform .2s;
+    pointer-events: none; z-index: 9000;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #scroll-top-btn.visible {
+    opacity: 1; transform: translateY(0) scale(1);
+    pointer-events: auto;
+  }
+  #scroll-top-btn:hover { filter: brightness(1.1); }
+  @media (max-width: 640px) {
+    #scroll-top-btn { bottom: 16px; right: 16px; width: 40px; height: 40px; font-size: 17px; }
+  }
+
+  /* ── Timeline today indicator ───────────────────────────────────────── */
+  .tl-col-today {
+    background: rgba(37,99,235,.05);
+    border-right-color: rgba(37,99,235,.25);
+  }
+  [data-theme="dark"] .tl-col-today { background: rgba(59,130,246,.08); }
+  .tl-col-today .tl-date-hd {
+    color: var(--accent);
+    background: rgba(37,99,235,.12);
+    position: relative;
+  }
+  .tl-col-today .tl-date-hd::after {
+    content: "TODAY";
+    display: block; font-size: 8px; letter-spacing: .6px;
+    font-weight: 800; opacity: .7; margin-top: 1px;
   }
 
   /* ── Print / PDF ────────────────────────────────────────────────────── */
@@ -925,6 +1009,9 @@
   </div>
 </div>
 
+<!-- Scroll-to-top -->
+<button id="scroll-top-btn" aria-label="Scroll to top" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+
 <!-- ── Trends panel ── -->
 <div id="panel-trends" class="tab-panel">
   <div class="trends-outer">
@@ -985,9 +1072,9 @@
       <div class="legend-item"><div class="swatch band-green"></div> &gt; 2 miles</div>
       <div class="legend-divider"></div>
       <span class="legend-label">Flags</span>
-      <div class="legend-item"><span class="flag-pill">Yes</span>&nbsp;New — not in previous run</div>
-      <div class="legend-item"><span class="flag-pill">Yes</span>&nbsp;Duplicate — near 2+ properties</div>
-      <div class="legend-item"><span class="flag-pill">Yes</span>&nbsp;Recurring — multiple time slots</div>
+      <div class="legend-item"><span class="flag-pill flag-pill-new">NEW</span>&nbsp;Not in previous run</div>
+      <div class="legend-item"><span class="flag-pill flag-pill-dup">DUP</span>&nbsp;Near 2+ properties</div>
+      <div class="legend-item"><span class="flag-pill flag-pill-rec">RECUR</span>&nbsp;Multiple time slots</div>
     </div>
   </div>
   <div class="generated" id="gen-footer"></div>
@@ -1022,9 +1109,9 @@
       <div class="legend-item"><div class="swatch band-green-nk"></div> &gt; 2 miles</div>
       <div class="legend-divider"></div>
       <span class="legend-label">Flags</span>
-      <div class="legend-item"><span class="flag-pill">Yes</span>&nbsp;New — not in previous run</div>
-      <div class="legend-item"><span class="flag-pill">Yes</span>&nbsp;Duplicate — near 2+ properties</div>
-      <div class="legend-item"><span class="flag-pill">Yes</span>&nbsp;Recurring — multiple time slots</div>
+      <div class="legend-item"><span class="flag-pill flag-pill-new">NEW</span>&nbsp;Not in previous run</div>
+      <div class="legend-item"><span class="flag-pill flag-pill-dup">DUP</span>&nbsp;Near 2+ properties</div>
+      <div class="legend-item"><span class="flag-pill flag-pill-rec">RECUR</span>&nbsp;Multiple time slots</div>
     </div>
   </div>
 </div>
@@ -1139,9 +1226,11 @@ function render(tab) {
       } else if (FLAG_KEYS.has(c.key)) {
         const yes = String(r[c.key] ?? "").toLowerCase() === "yes";
         if (yes) {
-          td.innerHTML = `<span class="flag-pill">Yes</span>`;
+          const pillCls = c.key === "is_new" ? "flag-pill-new" : c.key === "is_duplicate" ? "flag-pill-dup" : "flag-pill-rec";
+          const pillLbl = c.key === "is_new" ? "NEW"           : c.key === "is_duplicate" ? "DUP"           : "RECUR";
+          td.innerHTML = `<span class="flag-pill ${pillCls}">${pillLbl}</span>`;
         } else {
-          td.textContent = "No";
+          td.textContent = "—";
           td.classList.add("flag-no");
         }
       } else {
@@ -1208,6 +1297,7 @@ function switchTab(tab) {
   if (tab === "timeline")   buildTimeline();
   if (tab === "trends")     loadTrends();
   if (tab === "organizers") buildOrganizers();
+  if (tab === "summary")    buildSummary();
 }
 
 /* ── Map ────────────────────────────────────────────────────────────── */
@@ -1334,8 +1424,11 @@ function buildTimeline() {
     return;
   }
 
+  const todayKey = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+
   dates.forEach(date => {
     const col = document.createElement("div"); col.className = "tl-col";
+    if (date === todayKey) col.classList.add("tl-col-today");
     const hd  = document.createElement("div"); hd.className  = "tl-date-hd";
     hd.textContent = date.replace(/, \d{4}/, "");
     col.appendChild(hd);
@@ -1408,6 +1501,12 @@ function openTlModal(r) {
 function closeTlModal() {
   document.getElementById("tl-modal-overlay").classList.remove("open");
 }
+
+/* ── Scroll-to-top visibility ───────────────────────────────────────── */
+window.addEventListener("scroll", () => {
+  const btn = document.getElementById("scroll-top-btn");
+  if (btn) btn.classList.toggle("visible", window.scrollY > 320);
+}, { passive: true });
 
 /* ── Trends ─────────────────────────────────────────────────────────── */
 let TREND_DATA  = null;
