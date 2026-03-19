@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Protest Tracker</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -131,6 +131,7 @@
     font-size: 11px; font-weight: 500; font-family: inherit;
     cursor: pointer; white-space: nowrap; text-decoration: none;
     background: rgba(255,255,255,.12);
+    touch-action: manipulation;
     box-shadow: 0 2px 5px rgba(0,0,0,.25),
                 inset 0 1px 0 rgba(255,255,255,.22),
                 inset 0 -1px 0 rgba(0,0,0,.12);
@@ -164,6 +165,7 @@
     border-bottom: 3px solid transparent;
     border-radius: 6px 6px 0 0;
     transition: all .15s;
+    touch-action: manipulation;
   }
   .tab.active {
     color: #fff;
@@ -476,6 +478,47 @@
   .type-n {
     font-size: 10px; font-weight: 700; font-variant-numeric: tabular-nums;
     color: var(--accent-nk); width: 18px; text-align: right; flex-shrink: 0;
+  }
+
+  /* ── Responsive ────────────────────────────────────────────────────── */
+
+  /* Tablet — KPI strip reflowing starts here */
+  @media (max-width: 900px) {
+    .kpi-strip { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }
+  }
+
+  /* Mobile */
+  @media (max-width: 640px) {
+    /* Header */
+    header { padding: 10px 14px; gap: 8px; }
+    header h1 { font-size: 14px; }
+    .header-sub { display: none; }
+    #dl-excel  { display: none; }
+    #theme-toggle { font-size: 10px; padding: 5px 10px; }
+
+    /* Tab bar — horizontally scrollable, larger touch target */
+    .tabs { padding: 0 8px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .tab  { padding: 11px 14px; font-size: 11px; white-space: nowrap; }
+
+    /* Panel card */
+    .panel-card { margin: 8px; border-radius: 12px; }
+
+    /* Toolbar — search grows full-width first, selects + badge wrap below */
+    .toolbar { padding: 8px 10px; gap: 8px; }
+    .toolbar input[type=text] { width: 100%; }
+    .badge { margin-left: 0; }
+
+    /* Summary */
+    .sum-outer { padding: 8px; }
+    .kpi-strip  { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin-bottom: 10px; }
+    .kpi-card   { padding: 10px 12px 8px; }
+    .kpi-val    { font-size: 26px; }
+    .sum-cols   { grid-template-columns: 1fr; }
+    .threat-banner { padding: 8px 12px; }
+    .threat-desc   { display: none; }
+
+    /* Legend — tighter wrap */
+    .legend { gap: 8px; padding: 8px 12px; }
   }
 
   /* ── Footer ────────────────────────────────────────────────────────── */
