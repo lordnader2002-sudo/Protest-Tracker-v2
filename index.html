@@ -1075,6 +1075,9 @@
       <div class="legend-item"><span class="flag-pill flag-pill-new">NEW</span>&nbsp;Not in previous run</div>
       <div class="legend-item"><span class="flag-pill flag-pill-dup">DUP</span>&nbsp;Near 2+ properties</div>
       <div class="legend-item"><span class="flag-pill flag-pill-rec">RECUR</span>&nbsp;Multiple time slots</div>
+      <div class="legend-divider"></div>
+      <span class="legend-label">Rows</span>
+      <div class="legend-item"><span style="font-weight:700;font-size:11px">Bold row</span>&nbsp;New event — first seen this run</div>
     </div>
   </div>
   <div class="generated" id="gen-footer"></div>
@@ -1112,6 +1115,9 @@
       <div class="legend-item"><span class="flag-pill flag-pill-new">NEW</span>&nbsp;Not in previous run</div>
       <div class="legend-item"><span class="flag-pill flag-pill-dup">DUP</span>&nbsp;Near 2+ properties</div>
       <div class="legend-item"><span class="flag-pill flag-pill-rec">RECUR</span>&nbsp;Multiple time slots</div>
+      <div class="legend-divider"></div>
+      <span class="legend-label">Rows</span>
+      <div class="legend-item"><span style="font-weight:700;font-size:11px">Bold row</span>&nbsp;New event — first seen this run</div>
     </div>
   </div>
 </div>
@@ -1187,6 +1193,7 @@ function render(tab) {
   const { col, asc } = sortState[tab];
 
   let rows = (DATA[tab]?.rows || []).filter(r => {
+    if ((r.event_type || "").toLowerCase() === "community") return false;
     if (typeF && r.event_type !== typeF) return false;
     if (propF && r.property_name !== propF) return false;
     if (search) {
@@ -1276,7 +1283,7 @@ function populateFilters(tab) {
   ["type","prop"].forEach(kind => {
     const key = kind === "type" ? "event_type" : "property_name";
     const sel = document.getElementById(`${kind}-${tab}`);
-    const vals = [...new Set(rows.map(r => r[key]).filter(Boolean))].sort();
+    const vals = [...new Set(rows.map(r => r[key]).filter(Boolean))].filter(v => !(key === "event_type" && v.toLowerCase() === "community")).sort();
     vals.forEach(v => {
       const opt = document.createElement("option");
       opt.value = v; opt.textContent = v;
@@ -1396,8 +1403,8 @@ function buildTimeline() {
   const el = document.getElementById("tl-el");
   if (!el) return;
 
-  const gen = DATA.general?.rows  || [];
-  const nk  = DATA.no_kings?.rows || [];
+  const gen = noCommunity(DATA.general?.rows  || []);
+  const nk  = noCommunity(DATA.no_kings?.rows || []);
 
   function parseDate(str) {
     const m = (str || "").match(/^([A-Za-z]+ \d+, \d+)/);
@@ -1513,23 +1520,55 @@ let TREND_DATA  = null;
 let chartTotals = null;
 let chartBands  = null;
 
+function synthesizeTrendFromData() {
+  const gen = noCommunity(DATA.general?.rows  || []);
+  const nk  = noCommunity(DATA.no_kings?.rows || []);
+  if (!gen.length && !nk.length) return null;
+  function bandCounts(rows) {
+    let red = 0, amber = 0, green = 0, nw = 0;
+    rows.forEach(r => {
+      const d = parseFloat(r.distance_mi) || 9999;
+      if (d < 1) red++; else if (d < 2) amber++; else green++;
+      if (String(r.is_new ?? "").toLowerCase() === "yes") nw++;
+    });
+    return { red, amber, green, nw };
+  }
+  const g = bandCounts(gen), n = bandCounts(nk);
+  const now = new Date();
+  return {
+    ts: now.toISOString(),
+    label: now.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+    gen_total: gen.length, gen_new: g.nw, gen_red: g.red, gen_amber: g.amber, gen_green: g.green,
+    nk_total:  nk.length,  nk_new:  n.nw, nk_red:  n.red, nk_amber:  n.amber, nk_green:  n.green,
+  };
+}
+
 async function loadTrends() {
   if (TREND_DATA) return;
+  let runs;
   try {
     const res = await fetch("trend_data.json?v=" + Date.now());
     if (!res.ok) throw new Error("not found");
     TREND_DATA = await res.json();
-    const grid = document.getElementById("trends-grid");
-    const ph   = document.getElementById("trends-placeholder");
-    const runs = TREND_DATA?.runs || [];
-    if (!runs.length) { ph.textContent = "No trend data yet — run the tracker a few times."; return; }
-    ph.style.display = "none";
-    grid.style.display = "";
-    renderTrends(runs);
+    runs = TREND_DATA?.runs || [];
   } catch {
-    document.getElementById("trends-placeholder").textContent =
-      "No trend data yet — trend_data.json is created automatically after the first tracker run.";
+    /* trend_data.json not available — synthesize a single point from current data */
+    const entry = synthesizeTrendFromData();
+    if (entry) {
+      TREND_DATA = { runs: [entry] };
+      runs = [entry];
+    } else {
+      document.getElementById("trends-placeholder").textContent =
+        "No trend data yet — trend_data.json is created automatically after the first tracker run.";
+      return;
+    }
   }
+  const grid = document.getElementById("trends-grid");
+  const ph   = document.getElementById("trends-placeholder");
+  if (!runs.length) { ph.textContent = "No trend data yet — run the tracker a few times."; return; }
+  ph.style.display = "none";
+  grid.style.display = "";
+  renderTrends(runs);
 }
 
 function renderTrends(runs) {
@@ -1574,7 +1613,7 @@ function buildOrganizers() {
   const el = document.getElementById("org-list");
   if (!el) return;
 
-  const gen = DATA.general?.rows  || [];
+  const gen = noCommunity(DATA.general?.rows  || []);
   const nk  = DATA.no_kings?.rows || [];
   const orgMap = {};
 
@@ -1645,9 +1684,13 @@ function rankSection(el, entries, maxN, fillCls) {
   });
 }
 
+function noCommunity(rows) {
+  return rows.filter(r => (r.event_type || "").toLowerCase() !== "community");
+}
+
 function buildSummary() {
-  const gen = DATA.general?.rows  || [];
-  const nk  = DATA.no_kings?.rows || [];
+  const gen = noCommunity(DATA.general?.rows  || []);
+  const nk  = noCommunity(DATA.no_kings?.rows || []);
 
   /* — KPIs — */
   const newN = gen.filter(r => String(r.is_new       ?? "").toLowerCase() === "yes").length;
