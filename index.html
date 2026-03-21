@@ -15,7 +15,7 @@
   :root {
     --bg:               #dde3ee;
     --fg:               #1e2a3a;
-    --fg-muted:         #6b7a93;
+    --fg-muted:         #4d5e76;
     --accent:           #2563eb;
     --accent-nk:        #7c3aed;
     --border:           #c8d3e4;
@@ -56,7 +56,7 @@
   [data-theme="dark"] {
     --bg:               #181d2a;
     --fg:               #c4d0e4;
-    --fg-muted:         #4e5e78;
+    --fg-muted:         #7a90b0;
     --accent:           #3b82f6;
     --accent-nk:        #8b5cf6;
     --border:           #232c3e;
@@ -90,7 +90,7 @@
     --bar-amber:        #fbbf24;
     --bar-green:        #4ade80;
 
-    --track-bg:         rgba(255,255,255,.06);
+    --track-bg:         rgba(255,255,255,.10);
   }
 
   /* ── Dark mode specific overrides ─────────────────────────────────── */
@@ -107,7 +107,7 @@
   [data-theme="dark"] .tl-modal-row {
     border-bottom-color: rgba(255,255,255,.06);
   }
-  [data-theme="dark"] td.flag-no { color: #4e6080; }
+  [data-theme="dark"] td.flag-no { color: #7a90b0; }
   [data-theme="dark"] #tl-modal-overlay { background: rgba(0,0,0,.65); }
 
   /* ── Base ──────────────────────────────────────────────────────────── */
@@ -244,7 +244,7 @@
 
   .badge {
     color: #fff; border-radius: 20px;
-    padding: 4px 14px; font-size: 11px; font-weight: 600;
+    padding: 4px 14px; font-size: 12px; font-weight: 600;
     margin-left: auto; letter-spacing: .2px; white-space: nowrap;
     box-shadow: var(--neu-raised-sm);
   }
@@ -252,7 +252,7 @@
   .badge-nk      { background: linear-gradient(135deg, var(--th-nk-from), var(--th-nk-to)); }
 
   .subtitle-bar {
-    font-size: 11px; color: var(--fg-muted);
+    font-size: 12px; color: var(--fg-muted);
     padding: 6px 20px 4px;
     background: var(--bg);
     border-bottom: 1px solid var(--border);
@@ -266,7 +266,7 @@
 
   thead th {
     color: #fff;
-    font-size: 10.5px; font-weight: 600; letter-spacing: .5px;
+    font-size: 11.5px; font-weight: 600; letter-spacing: .4px;
     text-transform: uppercase;
     padding: 9px 10px;
     text-align: left; white-space: nowrap;
@@ -320,7 +320,7 @@
     flex-wrap: wrap; align-items: center;
   }
   .legend-label {
-    font-size: 10.5px; font-weight: 700; color: var(--fg-muted);
+    font-size: 12px; font-weight: 700; color: var(--fg-muted);
     text-transform: uppercase; letter-spacing: .6px;
   }
   .legend-divider {
@@ -331,7 +331,7 @@
   }
   .legend-item {
     display: flex; align-items: center; gap: 6px;
-    font-size: 11px; color: var(--fg-muted);
+    font-size: 12px; color: var(--fg-muted);
   }
   .swatch {
     width: 14px; height: 14px; border-radius: 4px;
@@ -365,9 +365,9 @@
     box-shadow: 0 0 6px var(--threat-clr, transparent);
   }
   .threat-dot.active { animation: pdot-ring 1.6s ease-out infinite; }
-  .threat-lbl { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .7px; color: var(--fg-muted); }
-  .threat-val { font-size: 13px; font-weight: 700; color: var(--threat-clr, var(--fg)); }
-  .threat-desc { font-size: 10.5px; color: var(--fg-muted); margin-left: auto; }
+  .threat-lbl { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: var(--fg-muted); }
+  .threat-val { font-size: 14px; font-weight: 700; color: var(--threat-clr, var(--fg)); }
+  .threat-desc { font-size: 12px; color: var(--fg-muted); margin-left: auto; }
 
   /* KPI strip */
   .kpi-strip {
@@ -388,8 +388,8 @@
     opacity: .07; pointer-events: none;
   }
   .kpi-lbl {
-    font-size: 9px; font-weight: 700; text-transform: uppercase;
-    letter-spacing: .8px; color: var(--fg-muted); margin-bottom: 8px;
+    font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .6px; color: var(--fg-muted); margin-bottom: 8px;
     display: flex; align-items: center; gap: 5px;
   }
   .kpi-val {
@@ -398,7 +398,7 @@
     font-family: "SF Mono","Cascadia Code","Fira Mono","Courier New",monospace;
     color: var(--kpi-clr, var(--fg));
   }
-  .kpi-sub { font-size: 9.5px; color: var(--fg-muted); margin-top: 5px; }
+  .kpi-sub { font-size: 11px; color: var(--fg-muted); margin-top: 5px; }
 
   /* Pulse dot */
   .pulse-dot {
@@ -415,9 +415,9 @@
     100% { transform: scale(2.8); opacity: 0; }
   }
 
-  /* Two-column layout */
+  /* Three-column layout */
   .sum-cols {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+    display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 14px;
   }
   .sum-col { display: flex; flex-direction: column; gap: 14px; }
 
@@ -435,8 +435,8 @@
     background: var(--sec-accent, var(--accent)); flex-shrink: 0;
   }
   .sum-sec-title {
-    font-size: 9.5px; font-weight: 700; text-transform: uppercase;
-    letter-spacing: .7px; color: var(--fg-muted);
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .6px; color: var(--fg-muted);
   }
   .sum-sec-bd { padding: 12px 16px; }
 
@@ -444,11 +444,11 @@
   .prox-grp { margin-bottom: 10px; }
   .prox-grp:last-child { margin-bottom: 0; }
   .prox-grp-lbl {
-    font-size: 9px; font-weight: 700; text-transform: uppercase;
-    letter-spacing: .5px; color: var(--fg-muted); margin-bottom: 5px;
+    font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .4px; color: var(--fg-muted); margin-bottom: 5px;
   }
   .prox-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
-  .prox-lbl { font-size: 10px; color: var(--fg-muted); width: 52px; flex-shrink: 0; }
+  .prox-lbl { font-size: 11.5px; color: var(--fg-muted); width: 52px; flex-shrink: 0; }
   .prox-track {
     flex: 1; height: 10px; border-radius: 5px;
     background: var(--track-bg); box-shadow: var(--neu-inset-sm); overflow: hidden;
@@ -458,8 +458,8 @@
     transition: width .7s cubic-bezier(.25,.46,.45,.94);
   }
   .prox-n {
-    font-size: 10px; font-weight: 700; font-variant-numeric: tabular-nums;
-    color: var(--fg); width: 18px; text-align: right; flex-shrink: 0;
+    font-size: 11.5px; font-weight: 700; font-variant-numeric: tabular-nums;
+    color: var(--fg); width: 24px; text-align: right; flex-shrink: 0;
   }
 
   /* Ranked list */
@@ -469,33 +469,32 @@
   }
   .rank-row:last-child { border-bottom: none; }
   .rank-i {
-    font-size: 9px; font-weight: 700; color: var(--fg-muted);
-    width: 14px; text-align: center; flex-shrink: 0;
+    font-size: 10.5px; font-weight: 700; color: var(--fg-muted);
+    width: 16px; text-align: center; flex-shrink: 0;
     font-variant-numeric: tabular-nums;
   }
   .rank-name {
-    flex: 1; font-size: 11px; font-weight: 500; color: var(--fg);
+    width: 120px; flex-shrink: 1; font-size: 12px; font-weight: 500; color: var(--fg);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .rank-track {
-    width: 56px; height: 5px; border-radius: 3px;
-    background: var(--track-bg); box-shadow: var(--neu-inset-sm);
-    overflow: hidden; flex-shrink: 0;
+    flex: 1; min-width: 30px; height: 7px; border-radius: 4px;
+    background: var(--track-bg); box-shadow: var(--neu-inset-sm); overflow: hidden;
   }
   .rank-fill {
-    height: 100%; border-radius: 3px; width: 0;
+    height: 100%; border-radius: 4px; width: 0;
     background: linear-gradient(90deg, var(--th-bg-from), var(--th-bg-to));
     transition: width .7s cubic-bezier(.25,.46,.45,.94);
   }
   .rank-n {
-    font-size: 10px; font-weight: 700; font-variant-numeric: tabular-nums;
-    color: var(--accent); width: 18px; text-align: right; flex-shrink: 0;
+    font-size: 11.5px; font-weight: 700; font-variant-numeric: tabular-nums;
+    color: var(--accent); width: 22px; text-align: right; flex-shrink: 0;
   }
 
   /* Event type bars */
   .type-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
   .type-name {
-    font-size: 10px; color: var(--fg); width: 100px; flex-shrink: 0;
+    font-size: 11.5px; color: var(--fg); width: 110px; flex-shrink: 0;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .type-track {
@@ -508,8 +507,8 @@
     transition: width .7s cubic-bezier(.25,.46,.45,.94);
   }
   .type-n {
-    font-size: 10px; font-weight: 700; font-variant-numeric: tabular-nums;
-    color: var(--accent-nk); width: 18px; text-align: right; flex-shrink: 0;
+    font-size: 11.5px; font-weight: 700; font-variant-numeric: tabular-nums;
+    color: var(--accent-nk); width: 22px; text-align: right; flex-shrink: 0;
   }
 
   /* New-this-run event list */
@@ -519,29 +518,29 @@
   }
   .new-ev-row:last-child { border-bottom: none; }
   .new-ev-badge {
-    font-size: 8.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .3px;
     color: var(--flag-yes-color); background: var(--track-bg);
     border-radius: 4px; padding: 2px 5px; flex-shrink: 0; white-space: nowrap;
   }
   .new-ev-title {
-    flex: 1; font-size: 11px; font-weight: 500; color: var(--fg);
+    flex: 1; font-size: 12px; font-weight: 500; color: var(--fg);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
   }
   .new-ev-title a { color: inherit; text-decoration: none; }
   .new-ev-title a:hover { text-decoration: underline; }
   .new-ev-meta {
-    font-size: 10px; color: var(--fg-muted); white-space: nowrap;
+    font-size: 11px; color: var(--fg-muted); white-space: nowrap;
     overflow: hidden; text-overflow: ellipsis; max-width: 160px; flex-shrink: 0;
   }
   .new-ev-dist {
-    font-size: 10px; font-weight: 700; font-variant-numeric: tabular-nums;
+    font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums;
     flex-shrink: 0; text-align: right; width: 36px;
   }
   .new-ev-none {
-    font-size: 11px; color: var(--fg-muted); text-align: center; padding: 14px 0;
+    font-size: 12px; color: var(--fg-muted); text-align: center; padding: 14px 0;
   }
   .sum-new-count {
-    margin-left: auto; font-size: 9.5px; font-weight: 700; color: var(--flag-yes-color);
+    margin-left: auto; font-size: 11px; font-weight: 700; color: var(--flag-yes-color);
     background: var(--track-bg); border-radius: 10px; padding: 1px 7px;
     font-variant-numeric: tabular-nums;
   }
@@ -578,7 +577,7 @@
     display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
     padding: 10px 18px; background: var(--bg); border-bottom: 1px solid var(--border);
   }
-  .tl-hint { font-size: 11px; color: var(--fg-muted); flex: 1; }
+  .tl-hint { font-size: 12px; color: var(--fg-muted); flex: 1; }
   .tl-scroll {
     display: flex; overflow-x: auto; min-height: calc(100vh - 160px);
     -webkit-overflow-scrolling: touch; align-items: flex-start;
@@ -594,14 +593,14 @@
     text-align: center; position: sticky; top: 0; z-index: 1;
   }
   .tl-section-lbl {
-    font-size: 8.5px; font-weight: 700; text-transform: uppercase;
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
     letter-spacing: .5px; color: var(--fg-muted); padding: 5px 8px 2px;
     border-top: 1px solid var(--border);
   }
   .tl-section-lbl.nk { color: var(--accent-nk); }
   .tl-event {
     margin: 2px 5px; padding: 4px 6px; border-radius: 5px;
-    font-size: 10px; font-weight: 500; color: var(--fg);
+    font-size: 11.5px; font-weight: 500; color: var(--fg);
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     border: 1px solid rgba(0,0,0,.06); cursor: pointer;
   }
@@ -654,8 +653,8 @@
     box-shadow: var(--neu-raised); padding: 18px 20px;
   }
   .trends-card-title {
-    font-size: 9.5px; font-weight: 700; text-transform: uppercase;
-    letter-spacing: .7px; color: var(--fg-muted); margin-bottom: 14px;
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .5px; color: var(--fg-muted); margin-bottom: 14px;
   }
   #trends-placeholder {
     text-align: center; padding: 60px; color: var(--fg-muted); font-size: 13px;
@@ -670,15 +669,15 @@
   }
   .org-row:last-child { border-bottom: none; }
   .org-i {
-    font-size: 9px; font-weight: 700; color: var(--fg-muted);
+    font-size: 10.5px; font-weight: 700; color: var(--fg-muted);
     width: 16px; text-align: center; flex-shrink: 0; font-variant-numeric: tabular-nums;
   }
   .org-name {
-    width: 200px; font-size: 11px; font-weight: 600; color: var(--fg);
+    width: 200px; font-size: 12.5px; font-weight: 600; color: var(--fg);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0;
   }
   .org-types {
-    flex: 1; font-size: 10px; color: var(--fg-muted);
+    flex: 1; font-size: 11px; color: var(--fg-muted);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .org-track {
@@ -691,7 +690,7 @@
     transition: width .7s cubic-bezier(.25,.46,.45,.94);
   }
   .org-n {
-    font-size: 10px; font-weight: 700; font-variant-numeric: tabular-nums;
+    font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums;
     color: var(--accent); width: 22px; text-align: right; flex-shrink: 0;
   }
   .org-empty {
@@ -780,6 +779,7 @@
   /* Tablet — 900px */
   @media (max-width: 900px) {
     .kpi-strip { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }
+    .sum-cols  { grid-template-columns: 1fr 1fr; }
   }
 
   /* Tablet — 768px */
@@ -822,7 +822,7 @@
     .kpi-strip  { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin-bottom: 10px; }
     .kpi-card   { padding: 10px 12px 8px; }
     .kpi-val    { font-size: 26px; }
-    .sum-cols   { grid-template-columns: 1fr; }
+    .sum-cols   { grid-template-columns: 1fr; gap: 8px; }
     .threat-banner { padding: 8px 12px; }
     .threat-desc   { display: none; }
 
@@ -875,7 +875,7 @@
   /* ── Footer ────────────────────────────────────────────────────────── */
   .generated {
     text-align: center;
-    font-size: 10px; color: var(--fg-muted); letter-spacing: .2px;
+    font-size: 11px; color: var(--fg-muted); letter-spacing: .2px;
     padding: 8px 24px 16px;
   }
 
@@ -960,9 +960,9 @@
         <div class="kpi-sub">30-day window</div>
       </div>
       <div class="kpi-card" style="--kpi-clr: var(--flag-yes-color)">
-        <div class="kpi-lbl">New This Run <span class="pulse-dot" id="kpi-new-dot" style="display:none"></span></div>
+        <div class="kpi-lbl">New This Week <span class="pulse-dot" id="kpi-new-dot" style="display:none"></span></div>
         <div class="kpi-val" id="kpi-new">—</div>
-        <div class="kpi-sub">Not seen before</div>
+        <div class="kpi-sub">Last 7 days</div>
       </div>
       <div class="kpi-card" style="--kpi-clr: #f59e0b">
         <div class="kpi-lbl">Duplicates</div>
@@ -997,7 +997,7 @@
         </div>
       </div>
 
-      <!-- Right column -->
+      <!-- Middle column -->
       <div class="sum-col">
         <div class="sum-sec">
           <div class="sum-sec-hd">
@@ -1006,6 +1006,10 @@
           </div>
           <div class="sum-sec-bd" id="sum-props"></div>
         </div>
+      </div>
+
+      <!-- Right column -->
+      <div class="sum-col">
         <div class="sum-sec">
           <div class="sum-sec-hd">
             <div class="sum-sec-accent" style="background:var(--accent-nk)"></div>
@@ -1017,11 +1021,11 @@
 
     </div><!-- /sum-cols -->
 
-    <!-- New This Run card -->
+    <!-- New This Week card -->
     <div class="sum-sec" style="margin-top:14px">
       <div class="sum-sec-hd">
         <div class="sum-sec-accent" style="background:var(--flag-yes-color)"></div>
-        <span class="sum-sec-title">New This Run</span>
+        <span class="sum-sec-title">New This Week</span>
         <span class="sum-new-count" id="sum-new-count" style="display:none"></span>
       </div>
       <div class="sum-sec-bd" id="sum-new-list" style="max-height:320px;overflow-y:auto"></div>
@@ -1186,6 +1190,7 @@ const COLS = [
 const FLAG_KEYS = new Set(["is_new","is_duplicate","is_recurring"]);
 
 let DATA = {};
+let FIRST_SEEN = {}; // { event_id: "YYYY-MM-DD" } — persisted in localStorage
 let sortState = { general: { col: "distance_mi", asc: true }, no_kings: { col: "distance_mi", asc: true } };
 let activeTab = "summary";
 const visibleRows = { general: [], no_kings: [] };
@@ -1696,6 +1701,32 @@ function buildOrganizers() {
   });
 }
 
+/* ── 7-day first-seen cache ─────────────────────────────────────────── */
+function loadFirstSeen() {
+  try {
+    const data = JSON.parse(localStorage.getItem('ptFirstSeen') || '{}');
+    // Prune entries older than 30 days
+    const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 30);
+    const cutoffStr = cutoff.toISOString().slice(0, 10);
+    for (const id of Object.keys(data)) { if (data[id] < cutoffStr) delete data[id]; }
+    return data;
+  } catch { return {}; }
+}
+function updateFirstSeen(rows) {
+  const today = new Date().toISOString().slice(0, 10);
+  let changed = false;
+  rows.forEach(r => {
+    if (r.event_id && !FIRST_SEEN[r.event_id]) { FIRST_SEEN[r.event_id] = today; changed = true; }
+  });
+  if (changed) { try { localStorage.setItem('ptFirstSeen', JSON.stringify(FIRST_SEEN)); } catch {} }
+}
+function isNewThisWeek(eventId) {
+  const date = FIRST_SEEN[eventId];
+  if (!date) return false;
+  const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 7);
+  return date >= cutoff.toISOString().slice(0, 10);
+}
+
 /* ── Summary helpers ────────────────────────────────────────────────── */
 function animCount(el, target) {
   if (!el) return;
@@ -1739,7 +1770,7 @@ function buildSummary() {
   const nk  = noCommunity(DATA.no_kings?.rows || []);
 
   /* — KPIs — */
-  const newN = gen.filter(r => String(r.is_new       ?? "").toLowerCase() === "yes").length;
+  const newN = [...new Set([...gen, ...nk].filter(r => isNewThisWeek(r.event_id)).map(r => r.event_id))].length;
   const dupN = gen.filter(r => String(r.is_duplicate ?? "").toLowerCase() === "yes").length;
   const recN = gen.filter(r => String(r.is_recurring ?? "").toLowerCase() === "yes").length;
   animCount(document.getElementById("kpi-gen"),  gen.length);
@@ -1834,15 +1865,15 @@ function buildSummary() {
     });
   }
 
-  /* — New This Run list — */
+  /* — New This Week list — */
   const newListEl  = document.getElementById("sum-new-list");
   const newCountEl = document.getElementById("sum-new-count");
   if (newListEl) {
-    // All gen new rows (matches KPI count), plus nk-only new rows not already in gen
-    const genNewIds = new Set(gen.filter(r => String(r.is_new ?? "").toLowerCase() === "yes").map(r => r.event_id));
+    // All gen rows new this week, plus nk-only rows new this week not already covered by gen
+    const genNewIds = new Set(gen.filter(r => isNewThisWeek(r.event_id)).map(r => r.event_id));
     const newEvents = [
-      ...gen.filter(r => String(r.is_new ?? "").toLowerCase() === "yes"),
-      ...nk.filter(r => String(r.is_new ?? "").toLowerCase() === "yes" && !genNewIds.has(r.event_id)),
+      ...gen.filter(r => isNewThisWeek(r.event_id)),
+      ...nk.filter(r => isNewThisWeek(r.event_id) && !genNewIds.has(r.event_id)),
     ];
     newEvents.sort((a, b) => parseFloat(a.distance_mi) - parseFloat(b.distance_mi));
     if (newCountEl) {
@@ -1852,7 +1883,7 @@ function buildSummary() {
     newListEl.innerHTML = "";
     if (newEvents.length === 0) {
       const msg = document.createElement("div"); msg.className = "new-ev-none";
-      msg.textContent = "No new events detected this run.";
+      msg.textContent = "No new events detected this week.";
       newListEl.appendChild(msg);
     } else {
       newEvents.forEach(r => {
@@ -1887,6 +1918,8 @@ async function init() {
     if (!res.ok) throw new Error(res.statusText);
     const json = await res.json();
     DATA = json;
+    FIRST_SEEN = loadFirstSeen();
+    updateFirstSeen([...(json.general?.rows || []), ...(json.no_kings?.rows || [])]);
 
     document.getElementById("loading").style.display = "none";
     document.getElementById("gen-time").textContent = "Generated: " + json.generated;
