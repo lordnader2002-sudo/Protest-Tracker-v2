@@ -1838,14 +1838,12 @@ function buildSummary() {
   const newListEl  = document.getElementById("sum-new-list");
   const newCountEl = document.getElementById("sum-new-count");
   if (newListEl) {
-    const seen = new Set();
-    const newEvents = [];
-    [...gen, ...nk].forEach(r => {
-      if (String(r.is_new ?? "").toLowerCase() !== "yes") return;
-      if (seen.has(r.event_id)) return;
-      seen.add(r.event_id);
-      newEvents.push(r);
-    });
+    // All gen new rows (matches KPI count), plus nk-only new rows not already in gen
+    const genNewIds = new Set(gen.filter(r => String(r.is_new ?? "").toLowerCase() === "yes").map(r => r.event_id));
+    const newEvents = [
+      ...gen.filter(r => String(r.is_new ?? "").toLowerCase() === "yes"),
+      ...nk.filter(r => String(r.is_new ?? "").toLowerCase() === "yes" && !genNewIds.has(r.event_id)),
+    ];
     newEvents.sort((a, b) => parseFloat(a.distance_mi) - parseFloat(b.distance_mi));
     if (newCountEl) {
       newCountEl.textContent = newEvents.length;
