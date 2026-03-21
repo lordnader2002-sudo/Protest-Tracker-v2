@@ -512,6 +512,40 @@
     color: var(--accent-nk); width: 18px; text-align: right; flex-shrink: 0;
   }
 
+  /* New-this-run event list */
+  .new-ev-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 5px 0; border-bottom: 1px solid var(--td-border-color); min-width: 0;
+  }
+  .new-ev-row:last-child { border-bottom: none; }
+  .new-ev-badge {
+    font-size: 8.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;
+    color: var(--flag-yes-color); background: var(--track-bg);
+    border-radius: 4px; padding: 2px 5px; flex-shrink: 0; white-space: nowrap;
+  }
+  .new-ev-title {
+    flex: 1; font-size: 11px; font-weight: 500; color: var(--fg);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+  }
+  .new-ev-title a { color: inherit; text-decoration: none; }
+  .new-ev-title a:hover { text-decoration: underline; }
+  .new-ev-meta {
+    font-size: 10px; color: var(--fg-muted); white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; max-width: 160px; flex-shrink: 0;
+  }
+  .new-ev-dist {
+    font-size: 10px; font-weight: 700; font-variant-numeric: tabular-nums;
+    flex-shrink: 0; text-align: right; width: 36px;
+  }
+  .new-ev-none {
+    font-size: 11px; color: var(--fg-muted); text-align: center; padding: 14px 0;
+  }
+  .sum-new-count {
+    margin-left: auto; font-size: 9.5px; font-weight: 700; color: var(--flag-yes-color);
+    background: var(--track-bg); border-radius: 10px; padding: 1px 7px;
+    font-variant-numeric: tabular-nums;
+  }
+
   /* ── Export buttons ────────────────────────────────────────────────── */
   .btn-export {
     border: none; outline: none; border-radius: 8px; padding: 5px 12px;
@@ -982,6 +1016,17 @@
       </div>
 
     </div><!-- /sum-cols -->
+
+    <!-- New This Run card -->
+    <div class="sum-sec" style="margin-top:14px">
+      <div class="sum-sec-hd">
+        <div class="sum-sec-accent" style="background:var(--flag-yes-color)"></div>
+        <span class="sum-sec-title">New This Run</span>
+        <span class="sum-new-count" id="sum-new-count" style="display:none"></span>
+      </div>
+      <div class="sum-sec-bd" id="sum-new-list" style="max-height:320px;overflow-y:auto"></div>
+    </div>
+
   </div><!-- /sum-outer -->
 </div>
 
@@ -1787,6 +1832,54 @@ function buildSummary() {
         fill.style.width = (n / maxN * 100) + "%";
       }));
     });
+  }
+
+  /* — New This Run list — */
+  const newListEl  = document.getElementById("sum-new-list");
+  const newCountEl = document.getElementById("sum-new-count");
+  if (newListEl) {
+    const seen = new Set();
+    const newEvents = [];
+    [...gen, ...nk].forEach(r => {
+      if (String(r.is_new ?? "").toLowerCase() !== "yes") return;
+      if (seen.has(r.event_id)) return;
+      seen.add(r.event_id);
+      newEvents.push(r);
+    });
+    newEvents.sort((a, b) => parseFloat(a.distance_mi) - parseFloat(b.distance_mi));
+    if (newCountEl) {
+      newCountEl.textContent = newEvents.length;
+      newCountEl.style.display = newEvents.length ? "" : "none";
+    }
+    newListEl.innerHTML = "";
+    if (newEvents.length === 0) {
+      const msg = document.createElement("div"); msg.className = "new-ev-none";
+      msg.textContent = "No new events detected this run.";
+      newListEl.appendChild(msg);
+    } else {
+      newEvents.forEach(r => {
+        const row   = document.createElement("div"); row.className = "new-ev-row";
+        const badge = document.createElement("span"); badge.className = "new-ev-badge";
+        badge.textContent = r.event_type || "Event";
+        const title = document.createElement("span"); title.className = "new-ev-title";
+        if (r.event_url) {
+          const a = document.createElement("a"); a.href = r.event_url;
+          a.target = "_blank"; a.rel = "noopener";
+          a.textContent = r.event_title || "(untitled)";
+          title.appendChild(a);
+        } else {
+          title.textContent = r.event_title || "(untitled)";
+        }
+        const meta = document.createElement("span"); meta.className = "new-ev-meta";
+        meta.textContent = r.property_name || "";
+        const dist = document.createElement("span"); dist.className = "new-ev-dist";
+        const d = parseFloat(r.distance_mi);
+        dist.textContent = isNaN(d) ? "" : d.toFixed(1) + " mi";
+        dist.style.color = d < 1 ? "var(--bar-red)" : d < 2 ? "var(--bar-amber)" : "var(--bar-green)";
+        row.append(badge, title, meta, dist);
+        newListEl.appendChild(row);
+      });
+    }
   }
 }
 
