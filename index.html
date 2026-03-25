@@ -960,9 +960,9 @@
         <div class="kpi-sub">30-day window</div>
       </div>
       <div class="kpi-card" style="--kpi-clr: var(--flag-yes-color)">
-        <div class="kpi-lbl">New This Week <span class="pulse-dot" id="kpi-new-dot" style="display:none"></span></div>
+        <div class="kpi-lbl">New Events <span class="pulse-dot" id="kpi-new-dot" style="display:none"></span></div>
         <div class="kpi-val" id="kpi-new">—</div>
-        <div class="kpi-sub">Last 7 days</div>
+        <div class="kpi-sub">Last 24 hours</div>
       </div>
       <div class="kpi-card" style="--kpi-clr: #f59e0b">
         <div class="kpi-lbl">Duplicates</div>
@@ -1021,11 +1021,11 @@
 
     </div><!-- /sum-cols -->
 
-    <!-- New This Week card -->
+    <!-- New Events card -->
     <div class="sum-sec" style="margin-top:14px">
       <div class="sum-sec-hd">
         <div class="sum-sec-accent" style="background:var(--flag-yes-color)"></div>
-        <span class="sum-sec-title">New This Week</span>
+        <span class="sum-sec-title">New Events</span>
         <span class="sum-new-count" id="sum-new-count" style="display:none"></span>
       </div>
       <div class="sum-sec-bd" id="sum-new-list" style="max-height:320px;overflow-y:auto"></div>
@@ -1190,7 +1190,7 @@ const COLS = [
 const FLAG_KEYS = new Set(["is_new","is_duplicate","is_recurring"]);
 
 let DATA = {};
-let FIRST_SEEN = {}; // { event_id: "YYYY-MM-DD" } — persisted in localStorage
+let FIRST_SEEN = {}; // { event_id: ISO-timestamp } — persisted in localStorage
 let sortState = { general: { col: "distance_mi", asc: true }, no_kings: { col: "distance_mi", asc: true } };
 let activeTab = "summary";
 const visibleRows = { general: [], no_kings: [] };
@@ -1701,30 +1701,28 @@ function buildOrganizers() {
   });
 }
 
-/* ── 7-day first-seen cache ─────────────────────────────────────────── */
+/* ── 24-hour first-seen cache ───────────────────────────────────────── */
 function loadFirstSeen() {
   try {
     const data = JSON.parse(localStorage.getItem('ptFirstSeen') || '{}');
-    // Prune entries older than 30 days
-    const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 30);
-    const cutoffStr = cutoff.toISOString().slice(0, 10);
-    for (const id of Object.keys(data)) { if (data[id] < cutoffStr) delete data[id]; }
+    // Prune entries older than 48 hours
+    const cutoff = Date.now() - 48 * 60 * 60 * 1000;
+    for (const id of Object.keys(data)) { if (new Date(data[id]).getTime() < cutoff) delete data[id]; }
     return data;
   } catch { return {}; }
 }
 function updateFirstSeen(rows) {
-  const today = new Date().toISOString().slice(0, 10);
+  const now = new Date().toISOString();
   let changed = false;
   rows.forEach(r => {
-    if (r.event_id && !FIRST_SEEN[r.event_id]) { FIRST_SEEN[r.event_id] = today; changed = true; }
+    if (r.event_id && !FIRST_SEEN[r.event_id]) { FIRST_SEEN[r.event_id] = now; changed = true; }
   });
   if (changed) { try { localStorage.setItem('ptFirstSeen', JSON.stringify(FIRST_SEEN)); } catch {} }
 }
-function isNewThisWeek(eventId) {
-  const date = FIRST_SEEN[eventId];
-  if (!date) return false;
-  const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 7);
-  return date >= cutoff.toISOString().slice(0, 10);
+function isNewEvent(eventId) {
+  const ts = FIRST_SEEN[eventId];
+  if (!ts) return false;
+  return (Date.now() - new Date(ts).getTime()) < 24 * 60 * 60 * 1000;
 }
 
 /* ── Summary helpers ────────────────────────────────────────────────── */
@@ -1770,7 +1768,7 @@ function buildSummary() {
   const nk  = noCommunity(DATA.no_kings?.rows || []);
 
   /* — KPIs — */
-  const newN = [...new Set([...gen, ...nk].filter(r => isNewThisWeek(r.event_id)).map(r => r.event_id))].length;
+  const newN = [...new Set([...gen, ...nk].filter(r => isNewEvent(r.event_id)).map(r => r.event_id))].length;
   const dupN = gen.filter(r => String(r.is_duplicate ?? "").toLowerCase() === "yes").length;
   const recN = gen.filter(r => String(r.is_recurring ?? "").toLowerCase() === "yes").length;
   animCount(document.getElementById("kpi-gen"),  gen.length);
@@ -1865,15 +1863,15 @@ function buildSummary() {
     });
   }
 
-  /* — New This Week list — */
+  /* — New Events list — */
   const newListEl  = document.getElementById("sum-new-list");
   const newCountEl = document.getElementById("sum-new-count");
   if (newListEl) {
-    // All gen rows new this week, plus nk-only rows new this week not already covered by gen
-    const genNewIds = new Set(gen.filter(r => isNewThisWeek(r.event_id)).map(r => r.event_id));
+    // All gen rows new in last 24h, plus nk-only rows not already covered by gen
+    const genNewIds = new Set(gen.filter(r => isNewEvent(r.event_id)).map(r => r.event_id));
     const newEvents = [
-      ...gen.filter(r => isNewThisWeek(r.event_id)),
-      ...nk.filter(r => isNewThisWeek(r.event_id) && !genNewIds.has(r.event_id)),
+      ...gen.filter(r => isNewEvent(r.event_id)),
+      ...nk.filter(r => isNewEvent(r.event_id) && !genNewIds.has(r.event_id)),
     ];
     newEvents.sort((a, b) => parseFloat(a.distance_mi) - parseFloat(b.distance_mi));
     if (newCountEl) {
@@ -1883,7 +1881,7 @@ function buildSummary() {
     newListEl.innerHTML = "";
     if (newEvents.length === 0) {
       const msg = document.createElement("div"); msg.className = "new-ev-none";
-      msg.textContent = "No new events detected this week.";
+      msg.textContent = "No new events in the last 24 hours.";
       newListEl.appendChild(msg);
     } else {
       newEvents.forEach(r => {
