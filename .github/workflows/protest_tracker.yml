@@ -1,7 +1,7 @@
 name: Protest Tracker
 
 on:
-  # Run automatically every day at 7 AM Eastern (12:00 UTC)
+  # Run automatically every day at 12:00 UTC (7 AM ET / 8 AM EDT)
   schedule:
     - cron: "0 12 * * *"
 
