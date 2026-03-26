@@ -916,7 +916,7 @@
   <div>
     <h1>Protest Tracker</h1>
     <div class="header-sub" id="gen-time"></div>
-    <div class="header-sub" style="opacity:.5">Updates daily at 7:00 AM ET</div>
+    <div class="header-sub" style="opacity:.5">Updates at 7 AM, 3 PM &amp; 11 PM ET</div>
   </div>
   <div class="header-actions">
     <a id="dl-excel" href="protest_tracker_latest.xlsx" download>⬇ Download Excel</a>
@@ -1701,34 +1701,43 @@ function buildOrganizers() {
   });
 }
 
-/* ── New-events 24-hour cache ───────────────────────────────────────── */
-// Cache shape: { generatedKey: string, seenAt: ISO-timestamp, ids: string[] }
-// generatedKey = json.generated from the data file; changes with each daily run.
-// When a new run is detected we capture is_new ids fresh and start the 24h clock.
-// After 24h the ids are still stored but isNewEvent() returns false, so the
-// section goes empty automatically until the next run brings new data.
+/* ── New-events 24-hour accumulating cache ──────────────────────────── */
+// Cache shape: { generatedKey: string, events: { [event_id]: ISO-timestamp } }
+// generatedKey tracks the last processed run. Each time a new run is detected,
+// its is_new events are ADDED to the events map (not replaced), each stamped
+// with the current time. Events age out individually after 24h, so discoveries
+// from earlier runs in the same day remain visible alongside newer ones.
 function loadNewEventCache() {
   try { return JSON.parse(localStorage.getItem('ptNewEvents') || 'null'); } catch { return null; }
 }
 function buildNewEventIds(gen, nk, generatedKey) {
-  const cache = loadNewEventCache();
-  if (cache && cache.generatedKey === generatedKey) {
-    // Same dataset we've already seen — restore ids, keep original seenAt
-    return { ids: new Set(cache.ids), seenAt: new Date(cache.seenAt).getTime() };
-  }
-  // New dataset (first load after a daily run) — capture is_new events now
-  const ids = new Set(
+  const MS_24H = 24 * 60 * 60 * 1000;
+  let cache = loadNewEventCache() || { generatedKey: null, events: {} };
+
+  if (cache.generatedKey !== generatedKey) {
+    // New run detected — add its is_new events (don't overwrite earlier stamps)
+    const now = new Date().toISOString();
     [...gen, ...nk]
       .filter(r => String(r.is_new ?? '').toLowerCase() === 'yes')
       .map(r => r.event_id).filter(Boolean)
+      .forEach(id => { if (!cache.events[id]) cache.events[id] = now; });
+    cache.generatedKey = generatedKey;
+
+    // Prune anything older than 24h
+    const cutoff = Date.now() - MS_24H;
+    for (const id of Object.keys(cache.events)) {
+      if (new Date(cache.events[id]).getTime() < cutoff) delete cache.events[id];
+    }
+    try { localStorage.setItem('ptNewEvents', JSON.stringify(cache)); } catch {}
+  }
+
+  // Return only ids still within the 24h window
+  const cutoff = Date.now() - MS_24H;
+  return new Set(
+    Object.entries(cache.events)
+      .filter(([, ts]) => new Date(ts).getTime() > cutoff)
+      .map(([id]) => id)
   );
-  const seenAt = Date.now();
-  try {
-    localStorage.setItem('ptNewEvents', JSON.stringify({
-      generatedKey, seenAt: new Date(seenAt).toISOString(), ids: [...ids]
-    }));
-  } catch {}
-  return { ids, seenAt };
 }
 function isNewEvent(eventId) {
   return NEW_EVENT_IDS.has(eventId);
@@ -1925,11 +1934,9 @@ async function init() {
     if (!res.ok) throw new Error(res.statusText);
     const json = await res.json();
     DATA = json;
-    const { ids, seenAt } = buildNewEventIds(
+    NEW_EVENT_IDS = buildNewEventIds(
       json.general?.rows || [], json.no_kings?.rows || [], json.generated
     );
-    // Only expose as "new" while within the 24h window
-    NEW_EVENT_IDS = (Date.now() - seenAt) < 24 * 60 * 60 * 1000 ? ids : new Set();
 
     document.getElementById("loading").style.display = "none";
     document.getElementById("gen-time").textContent = "Generated: " + json.generated;
