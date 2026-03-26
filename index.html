@@ -1191,6 +1191,7 @@ const FLAG_KEYS = new Set(["is_new","is_duplicate","is_recurring"]);
 
 let DATA = {};
 let NEW_EVENT_IDS = new Set(); // populated in init() from the 24h cache
+let NK_EVENT_IDS  = new Set(); // event_ids that belong to No Kings; excluded from general tab
 let sortState = { general: { col: "distance_mi", asc: true }, no_kings: { col: "distance_mi", asc: true } };
 let activeTab = "summary";
 const visibleRows = { general: [], no_kings: [] };
@@ -1245,6 +1246,8 @@ function render(tab) {
 
   let rows = (DATA[tab]?.rows || []).filter(r => {
     if ((r.event_type || "").toLowerCase() === "community") return false;
+    if ((r.event_type || "").toUpperCase() === "MEETING")   return false;
+    if (tab === "general" && NK_EVENT_IDS.has(r.event_id))  return false;
     if (typeF && r.event_type !== typeF) return false;
     if (propF && r.property_name !== propF) return false;
     if (search) {
@@ -1946,6 +1949,7 @@ async function init() {
   }
   try {
     DATA = json;
+    NK_EVENT_IDS  = new Set((json.no_kings?.rows || []).map(r => r.event_id).filter(Boolean));
     NEW_EVENT_IDS = buildNewEventIds(
       json.general?.rows || [], json.no_kings?.rows || [], json.generated
     );

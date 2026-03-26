@@ -510,9 +510,19 @@ def collect_events(
                         seen_general.add(ts_key)
                         general_rows.append(row)
                         stats["passed"] += 1
-                    if no_kings and etype_raw not in EXCLUDE_TYPES and ts_key not in seen_no_kings:
-                        seen_no_kings.add(ts_key)
-                        no_kings_rows.append(row)
+                    if no_kings and etype_raw not in EXCLUDE_TYPES:
+                        # Deduplicate by location + timeslot + property.
+                        # Multiple organizers often post separate Mobilize events
+                        # for the same physical protest; collapse them to one row.
+                        lat, lon = row["event_lat"], row["event_lon"]
+                        if lat != "" and lon != "":
+                            loc_key = (round(float(lat), 4), round(float(lon), 4))
+                        else:
+                            loc_key = row["event_location"]  # fallback for virtual
+                        nk_key = (loc_key, row["event_dt_sort"], prop["id"])
+                        if nk_key not in seen_no_kings:
+                            seen_no_kings.add(nk_key)
+                            no_kings_rows.append(row)
 
     # ── First pass ────────────────────────────────────────────────────────────
     retry_queue: list[list[dict]] = []   # clusters that hit 429 on first pass
