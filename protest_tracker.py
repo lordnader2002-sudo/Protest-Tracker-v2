@@ -981,7 +981,7 @@ def update_trend_data(general_rows: list[dict], no_kings_rows: list[dict],
     except (FileNotFoundError, ValueError):
         data = {"runs": []}
     data["runs"].append(entry)
-    data["runs"] = data["runs"][-120:]          # keep last 120 runs (~4 months daily)
+    data["runs"] = data["runs"][-270:]          # keep last 270 runs (~3 months at 3×/day)
     with open(path, "w") as f:
         _json.dump(data, f)
     print(f"  ✓ Trend data updated      → {path}  ({len(data['runs'])} runs)")
