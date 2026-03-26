@@ -64,10 +64,10 @@ DAYS_NO_KINGS     = 30   # No Kings event window
 
 NO_KINGS_KEYWORDS = ["no kings", "nokings", "no_kings", "#nokings", "50501"]
 
-# Event types to EXCLUDE from the 3-day sheet (pure campaign/admin work).
-# Everything else — including PROTEST, RALLY, MEETING, COMMUNITY, etc. — is kept.
+# Event types to EXCLUDE from all sheets (pure campaign/admin work, meetings).
 EXCLUDE_TYPES = {"PHONE_BANK", "TEXT_BANK", "AUTOMATED_PHONE_BANK", "LETTER_WRITING",
-                 "VOTER_REG", "FUNDRAISER", "TRAINING", "FRIEND_TO_FRIEND_OUTREACH"}
+                 "VOTER_REG", "FUNDRAISER", "TRAINING", "FRIEND_TO_FRIEND_OUTREACH",
+                 "MEETING"}
 
 REQUEST_DELAY  = 2.0   # seconds between successful API requests
 MAX_RETRIES    = 3     # max retries on transient errors (NOT 429)
@@ -506,11 +506,11 @@ def collect_events(
                         stats["excluded_type"] += 1
                     elif row["event_dt_sort"].timestamp() > end_3d:
                         stats["outside_window"] += 1
-                    elif ts_key not in seen_general:
+                    elif ts_key not in seen_general and not no_kings:
                         seen_general.add(ts_key)
                         general_rows.append(row)
                         stats["passed"] += 1
-                    if no_kings and ts_key not in seen_no_kings:
+                    if no_kings and etype_raw not in EXCLUDE_TYPES and ts_key not in seen_no_kings:
                         seen_no_kings.add(ts_key)
                         no_kings_rows.append(row)
 
