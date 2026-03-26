@@ -1713,6 +1713,10 @@ function loadNewEventCache() {
 function buildNewEventIds(gen, nk, generatedKey) {
   const MS_24H = 24 * 60 * 60 * 1000;
   let cache = loadNewEventCache() || { generatedKey: null, events: {} };
+  // Migrate old cache shape ({ ids[], seenAt }) that lacks the events map
+  if (!cache.events || typeof cache.events !== 'object' || Array.isArray(cache.events)) {
+    cache = { generatedKey: null, events: {} };
+  }
 
   if (cache.generatedKey !== generatedKey) {
     // New run detected — add its is_new events (don't overwrite earlier stamps)
@@ -1929,10 +1933,18 @@ function buildSummary() {
 }
 
 async function init() {
+  let json;
   try {
     const res = await fetch("dashboard_data.json?v=" + Date.now());
-    if (!res.ok) throw new Error(res.statusText);
-    const json = await res.json();
+    if (!res.ok) throw new Error("HTTP " + res.status + " — " + res.statusText);
+    json = await res.json();
+  } catch(e) {
+    document.getElementById("loading").id = "error";
+    document.getElementById("error").textContent =
+      "Could not load dashboard_data.json. Run the tracker workflow first. (" + e.message + ")";
+    return;
+  }
+  try {
     DATA = json;
     NEW_EVENT_IDS = buildNewEventIds(
       json.general?.rows || [], json.no_kings?.rows || [], json.generated
@@ -1955,10 +1967,11 @@ async function init() {
     buildTimeline();
     buildOrganizers();
   } catch(e) {
-    console.error("Dashboard init error:", e);
-    document.getElementById("loading").id = "error";
-    document.getElementById("error").textContent =
-      "Could not load dashboard_data.json. Run the tracker workflow first. (Error: " + e.message + ")";
+    console.error("Dashboard render error:", e);
+    document.getElementById("loading").style.display = "none";
+    const err = document.getElementById("error");
+    err.style.display = "";
+    err.textContent = "Dashboard rendering error: " + e.message;
   }
 }
 
