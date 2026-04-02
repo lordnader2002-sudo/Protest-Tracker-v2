@@ -341,28 +341,37 @@ def is_no_kings(event: dict) -> bool:
     return any(kw in text for kw in NO_KINGS_KEYWORDS)
 
 
-def get_prev_event_ids(cache_path: str) -> set | None:
-    """Return the set of event IDs from a previous cache file, or None if unavailable."""
+def get_first_seen_map(cache_path: str) -> dict:
+    """Return {event_id: iso_timestamp} of when each event was first discovered by this tracker.
+    Returns an empty dict if the cache doesn't exist or has no first_seen data.
+    """
     if not os.path.exists(cache_path):
-        return None
+        return {}
     try:
         with open(cache_path) as f:
             data = json.load(f)
-        ids = {r["event_id"] for sheet in ("general", "no_kings")
-               for r in data.get(sheet, []) if r.get("event_id")}
-        return ids or None
+        return data.get("first_seen", {})
     except Exception:
-        return None
+        return {}
 
 
-def annotate_event_flags(rows: list[dict], prev_event_ids: set | None = None) -> None:
-    """Add is_new, is_duplicate, is_recurring fields to each row in-place.
+def annotate_event_flags(rows: list[dict], first_seen_map: dict | None = None,
+                         now_iso: str | None = None) -> None:
+    """Add is_new, is_duplicate, is_recurring, first_seen_iso fields to each row in-place.
 
-    is_new       – event_id not present in the previous run's cache.
-    is_duplicate – same event appears near 2+ distinct properties this run.
-    is_recurring – same event has 2+ distinct timeslots this run.
+    is_new         – event_id first discovered in this run (not in previous cache).
+    is_duplicate   – same event appears near 2+ distinct properties this run.
+    is_recurring   – same event has 2+ distinct timeslots this run.
+    first_seen_iso – ISO timestamp of when this tracker first discovered the event.
+                     Passed through to the dashboard so the frontend can show a
+                     "new in last 24h" section without needing localStorage.
     """
     from collections import defaultdict
+
+    if first_seen_map is None:
+        first_seen_map = {}
+    if now_iso is None:
+        now_iso = datetime.now(timezone.utc).isoformat()
 
     event_props = defaultdict(set)   # event_id → set of property_ids
     event_slots = defaultdict(set)   # event_id → set of timeslots
@@ -375,10 +384,13 @@ def annotate_event_flags(rows: list[dict], prev_event_ids: set | None = None) ->
 
     for row in rows:
         eid = row.get("event_id")
-        row["is_new"]       = "Yes" if (prev_event_ids is not None
-                                        and eid and eid not in prev_event_ids) else ""
-        row["is_duplicate"] = "Yes" if eid and len(event_props[eid]) > 1 else ""
-        row["is_recurring"] = "Yes" if eid and len(event_slots[eid]) > 1 else ""
+        # Record discovery time for events seen for the first time this run
+        if eid and eid not in first_seen_map:
+            first_seen_map[eid] = now_iso
+        row["first_seen_iso"] = first_seen_map.get(eid, now_iso) if eid else ""
+        row["is_new"]         = "Yes" if (eid and first_seen_map.get(eid) == now_iso) else ""
+        row["is_duplicate"]   = "Yes" if eid and len(event_props[eid]) > 1 else ""
+        row["is_recurring"]   = "Yes" if eid and len(event_slots[eid]) > 1 else ""
 
 
 def collapse_recurring_timeslots(rows: list[dict]) -> list[dict]:
@@ -884,7 +896,8 @@ CACHE_FILE = "protest_tracker_cache.json"
 
 
 def save_cache(general_rows: list[dict], no_kings_rows: list[dict],
-               path: str = CACHE_FILE) -> None:
+               path: str = CACHE_FILE,
+               first_seen_map: dict | None = None) -> None:
     def _serialize(rows):
         out = []
         for r in rows:
@@ -895,8 +908,11 @@ def save_cache(general_rows: list[dict], no_kings_rows: list[dict],
         return out
 
     with open(path, "w") as f:
-        json.dump({"general": _serialize(general_rows),
-                   "no_kings": _serialize(no_kings_rows)}, f)
+        json.dump({
+            "general":    _serialize(general_rows),
+            "no_kings":   _serialize(no_kings_rows),
+            "first_seen": first_seen_map or {},
+        }, f)
     print(f"  ✓ Data cache saved → {path}")
 
 
@@ -1004,7 +1020,8 @@ def build_dashboard_json(general_rows: list[dict], no_kings_rows: list[dict],
     end_3d  = (now + timedelta(days=DAYS_GENERAL)).strftime("%B %d, %Y")
     end_30d = (now + timedelta(days=DAYS_NO_KINGS)).strftime("%B %d, %Y")
 
-    _DASHBOARD_EXTRA = ["event_lat", "event_lon", "prop_lat", "prop_lon", "sponsor_name"]
+    _DASHBOARD_EXTRA = ["event_lat", "event_lon", "prop_lat", "prop_lon", "sponsor_name",
+                        "first_seen_iso"]
 
     def _clean(rows):
         out = []
@@ -1105,10 +1122,11 @@ def main() -> None:
         print(f"\nLoaded {len(properties)} properties.\n")
         print("Querying Mobilize.us public API …\n")
 
-        # Load previous cache (if downloaded by the workflow) for is_new comparison
-        prev_event_ids = get_prev_event_ids(args.cache)
-        if prev_event_ids:
-            print(f"  Previous cache : {len(prev_event_ids)} known event IDs loaded for new-event detection")
+        # Load previous first-seen map for new-event detection
+        first_seen_map = get_first_seen_map(args.cache)
+        now_iso = datetime.now(timezone.utc).isoformat()
+        if first_seen_map:
+            print(f"  Previous cache : {len(first_seen_map)} known event IDs loaded for new-event detection")
 
         general_rows, no_kings_rows = collect_events(properties)
 
@@ -1118,8 +1136,8 @@ def main() -> None:
         print(f"{'─'*64}")
 
         print("\nAnnotating event flags (new / duplicate / recurring) …")
-        annotate_event_flags(general_rows,  prev_event_ids)
-        annotate_event_flags(no_kings_rows, prev_event_ids)
+        annotate_event_flags(general_rows,  first_seen_map, now_iso)
+        annotate_event_flags(no_kings_rows, first_seen_map, now_iso)
         new_g  = sum(1 for r in general_rows  if r.get("is_new"))
         new_nk = sum(1 for r in no_kings_rows if r.get("is_new"))
         dup_g  = sum(1 for r in general_rows  if r.get("is_duplicate"))
@@ -1135,7 +1153,7 @@ def main() -> None:
         print(f"  3-Day rows after collapse : {len(general_rows)}")
         print(f"  No Kings rows after collapse: {len(no_kings_rows)}")
 
-        save_cache(general_rows, no_kings_rows, args.cache)
+        save_cache(general_rows, no_kings_rows, args.cache, first_seen_map)
 
     print("\nBuilding Excel workbook …")
     build_excel(general_rows, no_kings_rows, args.output)

@@ -1720,50 +1720,16 @@ function buildOrganizers() {
   });
 }
 
-/* ── New-events 24-hour accumulating cache ──────────────────────────── */
-// Cache shape: { generatedKey: string, events: { [event_id]: ISO-timestamp } }
-// generatedKey tracks the last processed run. Each time a new run is detected,
-// its is_new events are ADDED to the events map (not replaced), each stamped
-// with the RUN's own timestamp (generated_iso) — not browser time. This means
-// the 24h window is anchored to when the tracker found the event, regardless
-// of when the user opens the page.
-function loadNewEventCache() {
-  try { return JSON.parse(localStorage.getItem('ptNewEvents') || 'null'); } catch { return null; }
-}
-function buildNewEventIds(gen, nk, generatedKey, generatedIso) {
-  const MS_24H = 24 * 60 * 60 * 1000;
-  // Use the run's own timestamp so the 24h window is anchored to discovery time
-  const runTs = (generatedIso && !isNaN(new Date(generatedIso)))
-    ? generatedIso
-    : new Date().toISOString();
-
-  let cache = loadNewEventCache() || { generatedKey: null, events: {} };
-  if (!cache.events || typeof cache.events !== 'object' || Array.isArray(cache.events)) {
-    cache = { generatedKey: null, events: {} };
-  }
-
-  if (cache.generatedKey !== generatedKey) {
-    // New run detected — add its is_new events stamped with the run's timestamp
-    [...gen, ...nk]
-      .filter(r => String(r.is_new ?? '').toLowerCase() === 'yes')
-      .map(r => r.event_id).filter(Boolean)
-      .forEach(id => { if (!cache.events[id]) cache.events[id] = runTs; });
-    cache.generatedKey = generatedKey;
-
-    // Prune anything older than 24h
-    const cutoff = Date.now() - MS_24H;
-    for (const id of Object.keys(cache.events)) {
-      if (new Date(cache.events[id]).getTime() < cutoff) delete cache.events[id];
-    }
-    try { localStorage.setItem('ptNewEvents', JSON.stringify(cache)); } catch {}
-  }
-
-  // Return only ids still within the 24h window
-  const cutoff = Date.now() - MS_24H;
+/* ── New-events: events first discovered within the last 24 hours ────── */
+// first_seen_iso is written by the Python tracker into each row in dashboard_data.json.
+// It records the UTC ISO timestamp of when this tracker first encountered the event.
+// No localStorage needed — the source of truth lives in the data file itself.
+function buildNewEventIds(gen, nk) {
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
   return new Set(
-    Object.entries(cache.events)
-      .filter(([, ts]) => new Date(ts).getTime() > cutoff)
-      .map(([id]) => id)
+    [...gen, ...nk]
+      .filter(r => r.first_seen_iso && new Date(r.first_seen_iso).getTime() > cutoff)
+      .map(r => r.event_id).filter(Boolean)
   );
 }
 function isNewEvent(eventId) {
@@ -2020,9 +1986,7 @@ async function init() {
   try {
     DATA = json;
     NK_EVENT_IDS  = new Set((json.no_kings?.rows || []).map(r => r.event_id).filter(Boolean));
-    NEW_EVENT_IDS = buildNewEventIds(
-      json.general?.rows || [], json.no_kings?.rows || [], json.generated, json.generated_iso
-    );
+    NEW_EVENT_IDS = buildNewEventIds(json.general?.rows || [], json.no_kings?.rows || []);
 
     document.getElementById("loading").style.display = "none";
     document.getElementById("gen-time").textContent = "Generated: " + json.generated;
