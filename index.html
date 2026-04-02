@@ -1908,20 +1908,21 @@ function buildSummary() {
     });
   }
 
-  /* — Within ½ mile list (combined gen + nk, deduped by event_id) — */
+  /* — Within ½ mile list (combined gen + nk, deduped by event_id+timeslot) — */
   const closeListEl  = document.getElementById("sum-close-list");
   const closeCountEl = document.getElementById("sum-close-count");
   if (closeListEl) {
     const CLOSE_MI = 0.5;
-    const byId = {};
+    const bySlot = {};
     const addRows = (rows, src) => rows.forEach(r => {
       const d = parseFloat(r.distance_mi);
       if (isNaN(d) || d > CLOSE_MI) return;
-      if (!byId[r.event_id] || d < byId[r.event_id]._d) byId[r.event_id] = { ...r, _d: d, _src: src };
+      const key = (r.event_id || "") + "|" + (r.event_date || "");
+      if (!bySlot[key] || d < bySlot[key]._d) bySlot[key] = { ...r, _d: d, _src: src };
     });
     addRows(gen, "gen");
     addRows(nk,  "nk");
-    const closeRows = Object.values(byId).sort((a, b) => a._d - b._d);
+    const closeRows = Object.values(bySlot).sort((a, b) => a._d - b._d);
 
     if (closeCountEl) {
       closeCountEl.textContent = closeRows.length;
@@ -1947,7 +1948,7 @@ function buildSummary() {
           title.appendChild(a);
         } else { title.textContent = r.event_title || "(untitled)"; }
         const meta  = document.createElement("span"); meta.className = "new-ev-meta";
-        meta.textContent = r.property_name || "";
+        meta.textContent = (r.property_name || "") + (r.event_date ? "  ·  " + r.event_date : "");
         const dist  = document.createElement("span"); dist.className = "new-ev-dist";
         dist.textContent = r._d.toFixed(2) + " mi";
         dist.style.color = "var(--bar-red)";
