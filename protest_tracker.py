@@ -1016,7 +1016,8 @@ def build_dashboard_json(general_rows: list[dict], no_kings_rows: list[dict],
         return out
 
     payload = {
-        "generated": now.strftime("%B %d, %Y at %H:%M EST"),
+        "generated":     now.strftime("%B %d, %Y at %H:%M EST"),
+        "generated_iso": now.astimezone(timezone.utc).isoformat(),
         "general": {
             "title": "3-Day Window",
             "subtitle": f"{now.strftime('%B %d, %Y')}  through  {end_3d}  •  Within {SEARCH_RADIUS_MI} miles",
