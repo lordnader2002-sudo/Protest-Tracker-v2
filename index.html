@@ -1724,11 +1724,24 @@ function buildOrganizers() {
 // first_seen_iso is written by the Python tracker into each row in dashboard_data.json.
 // It records the UTC ISO timestamp of when this tracker first encountered the event.
 // No localStorage needed — the source of truth lives in the data file itself.
+// Fallback: if first_seen_iso is absent (pre-upgrade data), use the is_new flag.
 function buildNewEventIds(gen, nk) {
-  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  const cutoff  = Date.now() - 24 * 60 * 60 * 1000;
+  const allRows = [...gen, ...nk];
+
+  // Prefer server-side first_seen_iso (accurate 24h window)
+  if (allRows.some(r => r.first_seen_iso)) {
+    return new Set(
+      allRows
+        .filter(r => r.first_seen_iso && new Date(r.first_seen_iso).getTime() > cutoff)
+        .map(r => r.event_id).filter(Boolean)
+    );
+  }
+
+  // Legacy fallback: data predates first_seen_iso — use is_new flag from Python
   return new Set(
-    [...gen, ...nk]
-      .filter(r => r.first_seen_iso && new Date(r.first_seen_iso).getTime() > cutoff)
+    allRows
+      .filter(r => String(r.is_new ?? '').toLowerCase() === 'yes')
       .map(r => r.event_id).filter(Boolean)
   );
 }
