@@ -539,6 +539,12 @@
   .new-ev-none {
     font-size: 12px; color: var(--fg-muted); text-align: center; padding: 14px 0;
   }
+  .close-src {
+    font-size: 9.5px; font-weight: 700; letter-spacing: .3px; text-transform: uppercase;
+    padding: 2px 6px; border-radius: 4px; flex-shrink: 0; white-space: nowrap;
+  }
+  .close-src-gen { color: var(--accent);    background: rgba(59,130,246,.13); }
+  .close-src-nk  { color: var(--accent-nk); background: rgba(139,92,246,.13); }
   .sum-new-count {
     margin-left: auto; font-size: 11px; font-weight: 700; color: var(--flag-yes-color);
     background: var(--track-bg); border-radius: 10px; padding: 1px 7px;
@@ -1020,6 +1026,16 @@
       </div>
 
     </div><!-- /sum-cols -->
+
+    <!-- Within ½ Mile card -->
+    <div class="sum-sec" style="margin-top:14px">
+      <div class="sum-sec-hd">
+        <div class="sum-sec-accent" style="background:var(--bar-red)"></div>
+        <span class="sum-sec-title">Within ½ Mile</span>
+        <span class="sum-new-count" id="sum-close-count" style="display:none;background:var(--bar-red);color:#fff"></span>
+      </div>
+      <div class="sum-sec-bd" id="sum-close-list" style="max-height:320px;overflow-y:auto"></div>
+    </div>
 
     <!-- New Events card -->
     <div class="sum-sec" style="margin-top:14px">
@@ -1890,6 +1906,55 @@ function buildSummary() {
         fill.style.width = (n / maxN * 100) + "%";
       }));
     });
+  }
+
+  /* — Within ½ mile list (combined gen + nk, deduped by event_id) — */
+  const closeListEl  = document.getElementById("sum-close-list");
+  const closeCountEl = document.getElementById("sum-close-count");
+  if (closeListEl) {
+    const CLOSE_MI = 0.5;
+    const byId = {};
+    const addRows = (rows, src) => rows.forEach(r => {
+      const d = parseFloat(r.distance_mi);
+      if (isNaN(d) || d > CLOSE_MI) return;
+      if (!byId[r.event_id] || d < byId[r.event_id]._d) byId[r.event_id] = { ...r, _d: d, _src: src };
+    });
+    addRows(gen, "gen");
+    addRows(nk,  "nk");
+    const closeRows = Object.values(byId).sort((a, b) => a._d - b._d);
+
+    if (closeCountEl) {
+      closeCountEl.textContent = closeRows.length;
+      closeCountEl.style.display = closeRows.length ? "" : "none";
+    }
+    closeListEl.innerHTML = "";
+    if (closeRows.length === 0) {
+      const msg = document.createElement("div"); msg.className = "new-ev-none";
+      msg.textContent = "No events within ½ mile.";
+      closeListEl.appendChild(msg);
+    } else {
+      closeRows.forEach(r => {
+        const row   = document.createElement("div"); row.className = "new-ev-row";
+        const src   = document.createElement("span");
+        src.className = "close-src " + (r._src === "nk" ? "close-src-nk" : "close-src-gen");
+        src.textContent = r._src === "nk" ? "NK" : "3-Day";
+        const badge = document.createElement("span"); badge.className = "new-ev-badge";
+        badge.textContent = r.event_type || "Event";
+        const title = document.createElement("span"); title.className = "new-ev-title";
+        if (r.event_url) {
+          const a = document.createElement("a"); a.href = r.event_url;
+          a.target = "_blank"; a.rel = "noopener"; a.textContent = r.event_title || "(untitled)";
+          title.appendChild(a);
+        } else { title.textContent = r.event_title || "(untitled)"; }
+        const meta  = document.createElement("span"); meta.className = "new-ev-meta";
+        meta.textContent = r.property_name || "";
+        const dist  = document.createElement("span"); dist.className = "new-ev-dist";
+        dist.textContent = r._d.toFixed(2) + " mi";
+        dist.style.color = "var(--bar-red)";
+        row.append(src, badge, title, meta, dist);
+        closeListEl.appendChild(row);
+      });
+    }
   }
 
   /* — New Events list — */
