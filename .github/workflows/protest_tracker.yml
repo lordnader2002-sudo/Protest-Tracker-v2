@@ -70,6 +70,14 @@ jobs:
           workflow_conclusion: success
           if_no_artifact_found: warn
 
+      - name: Fetch previous dashboard from gh-pages for first_seen tracking
+        if: github.event.inputs.mode != 'regen'
+        run: |
+          git fetch origin gh-pages --depth=1 2>/dev/null || true
+          git show origin/gh-pages:dashboard_data.json > dashboard_data_prev.json 2>/dev/null \
+            && echo "  Loaded previous dashboard_data.json ($(wc -c < dashboard_data_prev.json) bytes)" \
+            || echo "  No previous gh-pages dashboard found — all events will be treated as new"
+
       - name: Run Protest Tracker (full)
         if: github.event.inputs.mode != 'regen'
         env:

@@ -342,7 +342,7 @@ def is_no_kings(event: dict) -> bool:
 
 
 def get_first_seen_map(cache_path: str) -> dict:
-    """Return {event_id: iso_timestamp} of when each event was first discovered by this tracker.
+    """Return {str(event_id): iso_timestamp} from the cache artifact.
     Returns an empty dict if the cache doesn't exist or has no first_seen data.
     """
     if not os.path.exists(cache_path):
@@ -351,6 +351,32 @@ def get_first_seen_map(cache_path: str) -> dict:
         with open(cache_path) as f:
             data = json.load(f)
         return data.get("first_seen", {})
+    except Exception:
+        return {}
+
+
+def seed_first_seen_from_dashboard(path: str) -> dict:
+    """Extract {str(event_id): first_seen_iso} from a previously deployed dashboard JSON.
+
+    This is the primary source of first_seen data.  The dashboard_data.json is
+    committed to gh-pages after every run, so it is always available via
+    `git show origin/gh-pages:dashboard_data.json`.  Seeding from it avoids
+    dependence on the separate cache artifact which can silently fail.
+    """
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path) as f:
+            data = json.load(f)
+        result = {}
+        for sheet in ("general", "no_kings"):
+            rows = (data.get(sheet) or {}).get("rows", [])
+            for row in rows:
+                eid = str(row.get("event_id") or "")
+                fsi = row.get("first_seen_iso", "")
+                if eid and fsi and eid not in result:
+                    result[eid] = fsi
+        return result
     except Exception:
         return {}
 
@@ -1124,11 +1150,16 @@ def main() -> None:
         print(f"\nLoaded {len(properties)} properties.\n")
         print("Querying Mobilize.us public API …\n")
 
-        # Load previous first-seen map for new-event detection
+        # Load previous first-seen map — merge two sources for resilience:
+        # 1. Cache artifact (protest_tracker_cache.json) — fast, but can silently fail
+        # 2. Previous dashboard_data.json fetched from gh-pages — always available
         first_seen_map = get_first_seen_map(args.cache)
+        prev_dashboard = seed_first_seen_from_dashboard("dashboard_data_prev.json")
+        for eid, ts in prev_dashboard.items():
+            if eid not in first_seen_map:
+                first_seen_map[eid] = ts
         now_iso = datetime.now(timezone.utc).isoformat()
-        if first_seen_map:
-            print(f"  Previous cache : {len(first_seen_map)} known event IDs loaded for new-event detection")
+        print(f"  Previous cache : {len(first_seen_map)} known event IDs for new-event detection")
 
         general_rows, no_kings_rows = collect_events(properties)
 
