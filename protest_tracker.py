@@ -384,11 +384,13 @@ def annotate_event_flags(rows: list[dict], first_seen_map: dict | None = None,
 
     for row in rows:
         eid = row.get("event_id")
-        # Record discovery time for events seen for the first time this run
-        if eid and eid not in first_seen_map:
-            first_seen_map[eid] = now_iso
-        row["first_seen_iso"] = first_seen_map.get(eid, now_iso) if eid else ""
-        row["is_new"]         = "Yes" if (eid and first_seen_map.get(eid) == now_iso) else ""
+        # JSON serialises integer dict keys as strings, so normalise to str
+        # to avoid a type-mismatch where int 123 ≠ str "123" after round-trip.
+        key = str(eid) if eid is not None else None
+        if key and key not in first_seen_map:
+            first_seen_map[key] = now_iso
+        row["first_seen_iso"] = first_seen_map.get(key, now_iso) if key else ""
+        row["is_new"]         = "Yes" if (key and first_seen_map.get(key) == now_iso) else ""
         row["is_duplicate"]   = "Yes" if eid and len(event_props[eid]) > 1 else ""
         row["is_recurring"]   = "Yes" if eid and len(event_slots[eid]) > 1 else ""
 
