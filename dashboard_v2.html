@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Protest Tracker v2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  html,body,#root{height:100%;overflow:hidden}
+  body{font-family:'IBM Plex Sans',sans-serif}
+  ::-webkit-scrollbar{width:5px;height:5px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:rgba(128,128,128,.25);border-radius:3px}
+  button,input{font-family:inherit}
+  .leaflet-popup-content{font-family:'IBM Plex Sans',sans-serif;font-size:12px;line-height:1.5}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useRef,useMemo,useCallback} = React;
+
+/* ═══ TWEAKS ═══════════════════════════════════════════════════ */
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{"variant":"ops"}/*EDITMODE-END*/;
+
+const THEMES = {
+  atlas:{label:'ATLAS',desc:'Warm analyst — amber accent',
+    sidebar:'#0a1628',sidebarHover:'#112038',sidebarActive:'#162944',sidebarBorder:'#1a2e48',
+    sidebarText:'#7a9bbf',sidebarHead:'#c8ddf5',accent:'#d97706',accentBg:'rgba(217,119,6,.12)',
+    bg:'#f7f4ee',surface:'#fff',border:'#e5e0d6',borderStrong:'#cdc7bc',
+    text:'#1c1712',textSub:'#6b6256',textMuted:'#a09585',
+    critical:'#dc2626',high:'#ea580c',medium:'#b45309',low:'#15803d'},
+  ops:{label:'OPS',desc:'Clean white — red urgency',
+    sidebar:'#0f1520',sidebarHover:'#18202e',sidebarActive:'#1e2a3a',sidebarBorder:'#252f40',
+    sidebarText:'#6b7d96',sidebarHead:'#dce6f5',accent:'#dc2626',accentBg:'rgba(220,38,38,.08)',
+    bg:'#f2f4f7',surface:'#fff',border:'#e1e5ec',borderStrong:'#c9cdd8',
+    text:'#0f1520',textSub:'#4a5568',textMuted:'#8896ab',
+    critical:'#dc2626',high:'#ea580c',medium:'#b45309',low:'#15803d'},
+};
+
+const mono={fontFamily:"'IBM Plex Mono',monospace"};
+const bandColor=(dist)=>dist<1?'critical':dist<2?'high':'low';
+const threatColor=(t,lv)=>({critical:t.critical,high:t.high,medium:t.medium,low:t.low})[lv]||t.textMuted;
+
+/* ═══ SMALL COMPONENTS ═════════════════════════════════════════ */
+const Sparkline=({data,color,w=80,h=28})=>{
+  if(!data||data.length<2) return null;
+  const max=Math.max(...data),min=Math.min(...data),r=max-min||1;
+  const pts=data.map((v,i)=>`${(i/(data.length-1))*w},${h-2-((v-min)/r)*(h-6)}`).join(' ');
+  return <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{display:'block'}}>
+    <polygon points={`${pts} ${w},${h} 0,${h}`} fill={`${color}30`}/>
+    <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>;
+};
+
+const MiniBar=({value,max,color,bg})=><div style={{display:'flex',alignItems:'center',gap:8}}>
+  <div style={{flex:1,height:5,background:bg||'rgba(0,0,0,.07)',borderRadius:2}}>
+    <div style={{width:`${(value/max)*100}%`,height:'100%',background:color,borderRadius:2,transition:'width .4s ease'}}/>
+  </div>
+  <span style={{...mono,fontSize:11,fontWeight:600,minWidth:22,textAlign:'right'}}>{value}</span>
+</div>;
+
+const Pill=({level,t})=>{const c=threatColor(t,level);return <span style={{
+  ...mono,display:'inline-block',fontSize:9,fontWeight:600,letterSpacing:'.07em',
+  padding:'2px 7px',borderRadius:2,background:`${c}16`,color:c,
+  textTransform:'uppercase',border:`1px solid ${c}30`}}>{level}</span>;};
+
+const DistPill=({dist,t})=>{
+  const lv=dist<1?'critical':dist<2?'high':'low';
+  const labels={critical:'< 1 mi',high:'1-2 mi',low:'> 2 mi'};
+  return <Pill level={labels[lv]||lv} t={{...t,critical:t.critical,high:t.high,low:t.low}}/>;
+};
+
+const ICON_PATHS={
+  dashboard:"M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm11 0h7v7h-7z",
+  events3:"M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4",
+  nogo:"M12 2a10 10 0 100 20A10 10 0 0012 2zM4.93 4.93l14.14 14.14",
+  mayday:"M12 2v20M4 7l8-5 8 5M4 17l8 5 8-5M4 12l8 5 8-5",
+  map:"M1 6l7-4 8 4 7-4v16l-7 4-8-4-7 4V6z",
+  organizers:"M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 7a4 4 0 100 8 4 4 0 000-8zm8 4l2 2 4-4",
+  trends:"M22 12h-4l-3 9L9 3l-3 9H2",
+  search:"M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z",
+  switchDash:"M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7",
+  sun:"M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41M12 7a5 5 0 100 10 5 5 0 000-10z",
+  moon:"M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z",
+};
+const Icon=({id,size=16})=><svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+  stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+  <path d={ICON_PATHS[id]}/></svg>;
+
+/* ═══ DATA LOADER ══════════════════════════════════════════════ */
+function useData(){
+  const [data,setData]=useState(null);
+  const [err,setErr]=useState(null);
+  useEffect(()=>{
+    fetch('dashboard_data.json').then(r=>{
+      if(!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    }).then(d=>setData(d)).catch(e=>setErr(e.message));
+  },[]);
+  return {data,err};
+}
+
+function buildNewIds(allRows){
+  const cutoff=Date.now()-24*60*60*1000;
+  if(allRows.some(r=>r.first_seen_iso)){
+    return new Set(allRows.filter(r=>r.first_seen_iso&&new Date(r.first_seen_iso).getTime()>cutoff)
+      .map(r=>r.event_id).filter(Boolean));
+  }
+  return new Set(allRows.filter(r=>(r.is_new||'').toLowerCase()==='yes').map(r=>r.event_id).filter(Boolean));
+}
+
+function deriveStats(data){
+  if(!data) return null;
+  const gen=data.general?.rows||[], nk=data.no_kings?.rows||[], md=data.may_day?.rows||[];
+  const all=[...gen,...nk,...md];
+  const newIds=buildNewIds(all);
+  const newCount=all.filter(r=>newIds.has(r.event_id)).length;
+  const dupCount=all.filter(r=>(r.is_duplicate||'').toLowerCase()==='yes').length;
+  const recCount=all.filter(r=>(r.is_recurring||'').toLowerCase()==='yes').length;
+
+  // Event types
+  const typeMap={};
+  all.forEach(r=>{const t=r.event_type||'Unknown';typeMap[t]=(typeMap[t]||0)+1;});
+  const types=Object.entries(typeMap).map(([name,count])=>({name,count})).sort((a,b)=>b.count-a.count);
+
+  // Top properties
+  const propMap={};
+  all.forEach(r=>{const p=r.property_name||'Unknown';propMap[p]=(propMap[p]||0)+1;});
+  const props=Object.entries(propMap).map(([name,count])=>({name,count})).sort((a,b)=>b.count-a.count).slice(0,10);
+
+  // Proximity bands
+  const bands={red:0,amber:0,green:0};
+  gen.forEach(r=>{const d=parseFloat(r.distance_mi)||99;if(d<1)bands.red++;else if(d<2)bands.amber++;else bands.green++;});
+  const bandsNK={red:0,amber:0,green:0};
+  nk.forEach(r=>{const d=parseFloat(r.distance_mi)||99;if(d<1)bandsNK.red++;else if(d<2)bandsNK.amber++;else bandsNK.green++;});
+  const bandsMD={red:0,amber:0,green:0};
+  md.forEach(r=>{const d=parseFloat(r.distance_mi)||99;if(d<1)bandsMD.red++;else if(d<2)bandsMD.amber++;else bandsMD.green++;});
+
+  // Within ½ Mile — highest priority list
+  const halfMile=all.filter(r=>(parseFloat(r.distance_mi)||99)<0.5)
+    .sort((a,b)=>(parseFloat(a.distance_mi)||99)-(parseFloat(b.distance_mi)||99));
+
+  // Threat level
+  const closeCount=all.filter(r=>(parseFloat(r.distance_mi)||99)<0.5).length;
+  const threat=closeCount>=5?'critical':closeCount>=3?'high':closeCount>=1?'medium':'low';
+
+  // Map markers
+  const markers=[];
+  const seen=new Set();
+  all.forEach(r=>{
+    const lat=parseFloat(r.event_lat),lon=parseFloat(r.event_lon);
+    if(!lat||!lon) return;
+    const key=`${lat.toFixed(3)},${lon.toFixed(3)}`;
+    if(seen.has(key)){
+      const m=markers.find(x=>x.key===key);
+      if(m) m.count++;
+      return;
+    }
+    seen.add(key);
+    const dist=parseFloat(r.distance_mi)||99;
+    markers.push({key,lat,lon,name:r.event_title,type:r.event_type,
+      threat:dist<1?'critical':dist<2?'high':'low',count:1,dist});
+  });
+
+  // Organizers
+  const orgMap={};
+  all.forEach(r=>{const s=r.sponsor_name;if(!s)return;if(!orgMap[s])orgMap[s]={count:0,types:new Set()};orgMap[s].count++;orgMap[s].types.add(r.event_type||'');});
+  const orgs=Object.entries(orgMap).map(([name,v])=>({name,count:v.count,types:[...v.types].filter(Boolean).join(', ')})).sort((a,b)=>b.count-a.count);
+
+  return {general:gen.length,noKings:nk.length,mayDay:md.length,newCount,dupCount,recCount,
+    types,props,bands,bandsNK,bandsMD,threat,closeCount,markers,orgs,halfMile,newIds,
+    generated:data.generated||'',genSubtitle:data.general?.subtitle||'',
+    nkSubtitle:data.no_kings?.subtitle||'',mdSubtitle:data.may_day?.subtitle||''};
+}
+
+/* ═══ SIDEBAR ══════════════════════════════════════════════════ */
+const NAV=[
+  {id:'dashboard',label:'Summary'},
+  {id:'events3',label:'3-Day Events'},
+  {id:'nogo',label:'No Kings Events'},
+  {id:'mayday',label:'May Day 2026'},
+  null,
+  {id:'map',label:'Map'},
+  {id:'organizers',label:'Organizers'},
+  {id:'trends',label:'Trends'},
+];
+
+const Sidebar=({t,view,setView,generated})=><aside style={{
+  width:224,flexShrink:0,display:'flex',flexDirection:'column',
+  background:t.sidebar,borderRight:`1px solid ${t.sidebarBorder}`,height:'100vh'}}>
+  <div style={{padding:'18px 20px 16px',borderBottom:`1px solid ${t.sidebarBorder}`}}>
+    <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:12}}>
+      <div style={{width:34,height:34,borderRadius:5,background:t.accent,flexShrink:0,
+        display:'flex',alignItems:'center',justifyContent:'center'}}>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.8" strokeLinecap="round">
+          <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/>
+          <line x1="12" y1="3" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="21"/>
+          <line x1="3" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="21" y2="12"/>
+        </svg>
+      </div>
+      <div>
+        <div style={{color:'#fff',fontSize:13,fontWeight:700,letterSpacing:'.1em',lineHeight:1}}>PROTEST</div>
+        <div style={{color:t.accent,fontSize:10,fontWeight:600,letterSpacing:'.18em',marginTop:2}}>TRACKER v2</div>
+      </div>
+    </div>
+    <div style={{display:'flex',alignItems:'center',gap:6}}>
+      <div style={{width:6,height:6,borderRadius:'50%',background:'#22c55e',flexShrink:0,boxShadow:'0 0 8px #22c55e88'}}/>
+      <span style={{...mono,fontSize:9,color:t.sidebarText,letterSpacing:'.06em'}}>
+        {generated?`UPDATED · ${generated}`:'LOADING…'}
+      </span>
+    </div>
+  </div>
+  <nav style={{flex:1,padding:'6px 0',overflowY:'auto'}}>
+    {NAV.map((item,i)=>{
+      if(!item) return <div key={i} style={{height:1,background:t.sidebarBorder,margin:'6px 16px'}}/>;
+      const active=view===item.id;
+      return <button key={item.id} onClick={()=>setView(item.id)} style={{
+        width:'100%',display:'flex',alignItems:'center',gap:11,padding:'9px 20px',
+        background:active?t.sidebarActive:'transparent',border:'none',
+        borderLeft:`2px solid ${active?t.accent:'transparent'}`,
+        color:active?t.sidebarHead:t.sidebarText,cursor:'pointer',
+        transition:'background .12s,color .12s',fontSize:13,fontWeight:active?600:400,textAlign:'left'}}
+        onMouseEnter={e=>{if(!active)e.currentTarget.style.background=t.sidebarHover}}
+        onMouseLeave={e=>{if(!active)e.currentTarget.style.background='transparent'}}>
+        <Icon id={item.id} size={15}/><span style={{flex:1}}>{item.label}</span>
+        {active&&<div style={{width:4,height:4,borderRadius:'50%',background:t.accent}}/>}
+      </button>;
+    })}
+  </nav>
+  <div style={{padding:'12px 20px',borderTop:`1px solid ${t.sidebarBorder}`}}>
+    <a href="classic.html" style={{display:'flex',alignItems:'center',gap:8,
+      textDecoration:'none',color:t.sidebarText,fontSize:11,marginBottom:8,
+      padding:'6px 0',borderBottom:`1px solid ${t.sidebarBorder}`}}
+      onMouseEnter={e=>e.currentTarget.style.color=t.sidebarHead}
+      onMouseLeave={e=>e.currentTarget.style.color=t.sidebarText}>
+      <Icon id="switchDash" size={13}/>
+      <span>Switch to Classic Dashboard</span>
+    </a>
+    <div style={{...mono,fontSize:9,color:`${t.sidebarText}88`,letterSpacing:'.06em',lineHeight:1.8}}>
+      ANALYST WORKSPACE<br/>
+      <span style={{color:`${t.sidebarText}55`}}>v2 · dashboard_v2.html</span>
+    </div>
+  </div>
+</aside>;
+
+/* ═══ TOPBAR ═══════════════════════════════════════════════════ */
+const LABELS={dashboard:'Summary Dashboard',events3:'3-Day Events',nogo:'No Kings Events (30 Days Out)',
+  mayday:'May Day Events (Until May 2)',map:'Event Map',organizers:'Organizers',trends:'Trends'};
+
+const TopBar=({t,view,generated,darkMode,handleDark})=><div style={{
+  height:46,background:t.surface,borderBottom:`1px solid ${t.border}`,
+  display:'flex',alignItems:'center',padding:'0 22px',gap:12,flexShrink:0}}>
+  <span style={{fontSize:14,fontWeight:600,color:t.text}}>{LABELS[view]||view}</span>
+  <span style={{width:1,height:14,background:t.border}}/>
+  <span style={{...mono,fontSize:10,color:t.textMuted}}>{generated||''}</span>
+  <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:10}}>
+    <div style={{display:'flex',alignItems:'center',gap:5}}>
+      <div style={{width:7,height:7,borderRadius:'50%',background:'#22c55e',boxShadow:'0 0 6px #22c55e66'}}/>
+      <span style={{...mono,fontSize:10,color:t.textMuted}}>LIVE FEED</span>
+    </div>
+    <span style={{width:1,height:14,background:t.border}}/>
+    <button onClick={handleDark} title={darkMode?'Switch to light mode':'Switch to dark mode'} style={{
+      background:'transparent',border:`1px solid ${t.border}`,borderRadius:4,
+      padding:'5px 10px',cursor:'pointer',color:t.textSub,
+      display:'flex',alignItems:'center',gap:6,fontSize:10,letterSpacing:'.06em',
+      ...mono,textTransform:'uppercase',transition:'all .12s'}}
+      onMouseEnter={e=>{e.currentTarget.style.color=t.text;e.currentTarget.style.borderColor=t.borderStrong;}}
+      onMouseLeave={e=>{e.currentTarget.style.color=t.textSub;e.currentTarget.style.borderColor=t.border;}}>
+      <Icon id={darkMode?'sun':'moon'} size={12}/>
+      <span>{darkMode?'Light':'Dark'}</span>
+    </button>
+  </div>
+</div>;
+
+/* ═══ DASHBOARD ════════════════════════════════════════════════ */
+const StatCard=({t,label,value,sub,spark,color})=><div style={{
+  flex:1,minWidth:0,background:t.surface,border:`1px solid ${t.border}`,borderRadius:4,padding:'16px 18px'}}>
+  <div style={{fontSize:9,fontWeight:700,letterSpacing:'.12em',textTransform:'uppercase',color:t.textMuted,marginBottom:10}}>{label}</div>
+  <div style={{display:'flex',alignItems:'flex-end',justifyContent:'space-between',gap:8}}>
+    <div>
+      <div style={{fontSize:38,fontWeight:700,color:color||t.text,lineHeight:1,letterSpacing:'-.03em'}}>{value}</div>
+      {sub&&<div style={{fontSize:11,color:t.textMuted,marginTop:5}}>{sub}</div>}
+    </div>
+    {spark&&<Sparkline data={spark} color={color||t.accent}/>}
+  </div>
+</div>;
+
+const Dashboard=({t,stats,data})=>{
+  if(!stats) return <div style={{padding:40,textAlign:'center',color:t.textMuted}}>Loading…</div>;
+  const maxType=Math.max(...stats.types.map(x=>x.count),1);
+  const maxProp=Math.max(...stats.props.map(x=>x.count),1);
+  const typeColors=['#e74c3c','#e67e22','#f1c40f','#2ecc71','#3498db','#9b59b6','#e91e63','#00bcd4'];
+
+  return <div style={{padding:22,display:'flex',flexDirection:'column',gap:16}}>
+    {/* Stats */}
+    <div style={{display:'grid',gridTemplateColumns:'repeat(6, 1fr)',gap:12}}>
+      <StatCard t={t} label="3-Day Events" value={stats.general} sub="72-hour window" color={t.accent}/>
+      <StatCard t={t} label="No Kings" value={stats.noKings} sub="30-day window" color="#7c3aed"/>
+      <StatCard t={t} label="May Day 2026" value={stats.mayDay} sub="Until May 2" color="#ef4444"/>
+      <StatCard t={t} label="New (24h)" value={stats.newCount} sub="First-seen &lt; 24h" color={t.low}/>
+      <StatCard t={t} label="Duplicates" value={stats.dupCount} sub="Near 2+ properties" color={t.high}/>
+      <StatCard t={t} label="Recurring" value={stats.recCount} sub="Multiple timeslots" color={t.textMuted}/>
+    </div>
+
+    {/* Three columns */}
+    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:14}}>
+      {/* Proximity */}
+      <div style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:4,padding:16}}>
+        <div style={{fontSize:9,fontWeight:700,letterSpacing:'.12em',textTransform:'uppercase',color:t.textMuted,marginBottom:14}}>Proximity Breakdown</div>
+        {[{label:'3-Day',b:stats.bands,color:t.accent},{label:'No Kings',b:stats.bandsNK,color:'#7c3aed'},{label:'May Day',b:stats.bandsMD,color:'#ef4444'}].map(g=>{
+          const total=g.b.red+g.b.amber+g.b.green||1;
+          return <div key={g.label} style={{marginBottom:12}}>
+            <div style={{fontSize:10,fontWeight:700,color:t.textSub,marginBottom:6,textTransform:'uppercase',letterSpacing:'.06em'}}>{g.label}</div>
+            {[{label:'< 1 mi',val:g.b.red,color:t.critical},{label:'1-2 mi',val:g.b.amber,color:t.high},{label:'> 2 mi',val:g.b.green,color:t.low}].map(row=>
+              <div key={row.label} style={{display:'flex',alignItems:'center',gap:8,marginBottom:5}}>
+                <span style={{fontSize:11,color:t.textMuted,width:42,flexShrink:0}}>{row.label}</span>
+                <div style={{flex:1,height:8,background:`${t.border}`,borderRadius:3,overflow:'hidden'}}>
+                  <div style={{width:`${(row.val/total)*100}%`,height:'100%',background:row.color,borderRadius:3,transition:'width .5s'}}/>
+                </div>
+                <span style={{...mono,fontSize:11,fontWeight:600,width:22,textAlign:'right'}}>{row.val}</span>
+              </div>
+            )}
+          </div>;
+        })}
+      </div>
+
+      {/* Top Properties */}
+      <div style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:4,padding:16}}>
+        <div style={{fontSize:9,fontWeight:700,letterSpacing:'.12em',textTransform:'uppercase',color:t.textMuted,marginBottom:14}}>Top Exposed Properties</div>
+        <div style={{display:'flex',flexDirection:'column',gap:10}}>
+          {stats.props.slice(0,8).map(p=><div key={p.name}>
+            <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
+              <span style={{fontSize:12,color:t.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:160}}>{p.name}</span>
+              <span style={{...mono,fontSize:11,fontWeight:600,color:t.textMuted}}>{p.count}</span>
+            </div>
+            <MiniBar value={p.count} max={maxProp} color={t.accent}/>
+          </div>)}
+        </div>
+      </div>
+
+      {/* Event Types */}
+      <div style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:4,padding:16}}>
+        <div style={{fontSize:9,fontWeight:700,letterSpacing:'.12em',textTransform:'uppercase',color:t.textMuted,marginBottom:14}}>Event Types</div>
+        <div style={{display:'flex',flexDirection:'column',gap:10}}>
+          {stats.types.slice(0,8).map((c,i)=><div key={c.name}>
+            <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
+              <span style={{fontSize:12,color:t.text}}>{c.name}</span>
+              <span style={{...mono,fontSize:11,fontWeight:600,color:t.textMuted}}>{c.count}</span>
+            </div>
+            <MiniBar value={c.count} max={maxType} color={typeColors[i%typeColors.length]}/>
+          </div>)}
+        </div>
+      </div>
+    </div>
+
+    {/* Two-column row: Within ½ Mile + New Events (last 24h) */}
+    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
+      {/* Within ½ Mile */}
+      <div style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:4,padding:16}}>
+        <div style={{fontSize:9,fontWeight:700,letterSpacing:'.12em',textTransform:'uppercase',color:t.textMuted,marginBottom:12,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+          <span>Within ½ Mile</span>
+          <span style={{...mono,fontSize:10,color:t.critical,fontWeight:700}}>{stats.halfMile.length}</span>
+        </div>
+        {(()=>{
+          const rows=stats.halfMile.slice(0,15);
+          if(!rows.length) return <div style={{fontSize:12,color:t.textMuted,textAlign:'center',padding:16}}>No events within ½ mile</div>;
+          return rows.map((ev,i)=>{
+            const dist=parseFloat(ev.distance_mi)||99;
+            return <div key={i} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 0',
+              borderBottom:i<rows.length-1?`1px solid ${t.border}`:'none'}}>
+              <span style={{...mono,fontSize:11,fontWeight:700,color:t.critical,width:42,flexShrink:0}}>{dist.toFixed(2)}mi</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:12,color:t.text,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ev.event_title}</div>
+                <div style={{fontSize:10,color:t.textMuted,marginTop:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ev.property_name}</div>
+              </div>
+              <span style={{...mono,fontSize:10,color:t.textMuted,flexShrink:0,whiteSpace:'nowrap'}}>{ev.event_date}</span>
+            </div>;
+          });
+        })()}
+      </div>
+
+      {/* New Events (last 24h) */}
+      <div style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:4,padding:16}}>
+        <div style={{fontSize:9,fontWeight:700,letterSpacing:'.12em',textTransform:'uppercase',color:t.textMuted,marginBottom:12,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+          <span>New Events · Last 24h</span>
+          <span style={{...mono,fontSize:10,color:t.low,fontWeight:700}}>{stats.newCount}</span>
+        </div>
+        {(()=>{
+          const allRows=[...(data?.general?.rows||[]),...(data?.no_kings?.rows||[]),...(data?.may_day?.rows||[])];
+          const newEvts=allRows.filter(r=>stats.newIds.has(r.event_id)).slice(0,15);
+          if(!newEvts.length) return <div style={{fontSize:12,color:t.textMuted,textAlign:'center',padding:16}}>No new events in last 24h</div>;
+          return newEvts.map((ev,i)=>{
+            const dist=parseFloat(ev.distance_mi)||99;
+            const c=dist<1?t.critical:dist<2?t.high:t.low;
+            return <div key={i} style={{display:'flex',alignItems:'flex-start',gap:10,padding:'8px 0',
+              borderBottom:i<newEvts.length-1?`1px solid ${t.border}`:'none'}}>
+              <span style={{...mono,fontSize:9,fontWeight:600,padding:'2px 7px',borderRadius:2,flexShrink:0,marginTop:1,
+                background:`${c}12`,color:c,border:`1px solid ${c}25`,textTransform:'uppercase'}}>{ev.event_type||'EVENT'}</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:12,color:t.text,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ev.event_title}</div>
+                <div style={{fontSize:10,color:t.textMuted,marginTop:2}}>{ev.property_name} · {(dist).toFixed(1)} mi</div>
+              </div>
+              <span style={{...mono,fontSize:10,color:t.textMuted,flexShrink:0,whiteSpace:'nowrap'}}>{ev.event_date}</span>
+            </div>;
+          });
+        })()}
+      </div>
+    </div>
+  </div>;
+};
+
+/* ═══ EVENTS TABLE ═════════════════════════════════════════════ */
+const EventsTable=({t,rows,type,subtitle})=>{
+  const [sortCol,setSortCol]=useState('distance_mi');
+  const [sortDir,setSortDir]=useState('asc');
+  const [search,setSearch]=useState('');
+  const [hovered,setHovered]=useState(null);
+
+  const data=useMemo(()=>{
+    return (rows||[])
+      .filter(r=>{
+        if(!search) return true;
+        const s=search.toLowerCase();
+        return (r.event_title||'').toLowerCase().includes(s)||
+          (r.property_name||'').toLowerCase().includes(s)||
+          (r.event_location||'').toLowerCase().includes(s)||
+          (r.event_type||'').toLowerCase().includes(s);
+      })
+      .sort((a,b)=>{
+        let va=a[sortCol]??'',vb=b[sortCol]??'';
+        if(sortCol==='distance_mi'){va=parseFloat(va)||0;vb=parseFloat(vb)||0;}
+        else{va=String(va).toLowerCase();vb=String(vb).toLowerCase();}
+        if(va<vb) return sortDir==='asc'?-1:1;
+        if(va>vb) return sortDir==='asc'?1:-1;
+        return 0;
+      });
+  },[rows,search,sortCol,sortDir]);
+
+  const sort=col=>{if(sortCol===col)setSortDir(d=>d==='asc'?'desc':'asc');else{setSortCol(col);setSortDir('asc');}};
+
+  const TH=({col,children,right})=><th onClick={()=>sort(col)} style={{
+    padding:'8px 12px',textAlign:right?'right':'left',fontSize:9,fontWeight:700,letterSpacing:'.1em',
+    textTransform:'uppercase',color:sortCol===col?t.accent:t.textMuted,
+    borderBottom:`2px solid ${sortCol===col?t.accent:t.border}`,cursor:'pointer',userSelect:'none',
+    whiteSpace:'nowrap',background:`${t.border}44`,position:'sticky',top:0,zIndex:2}}>
+    <span style={{display:'inline-flex',alignItems:'center',gap:4}}>{children}
+      {sortCol===col&&<span style={{fontSize:10}}>{sortDir==='desc'?'↓':'↑'}</span>}
+    </span>
+  </th>;
+
+  const tdBase={padding:'10px 12px',borderBottom:`1px solid ${t.border}`,verticalAlign:'top',fontSize:12,color:t.text};
+  const flagCell=(val)=>{
+    const yes=(val||'').toLowerCase()==='yes';
+    return <span style={{...mono,fontSize:9,fontWeight:700,color:yes?t.low:t.textMuted,
+      background:yes?`${t.low}15`:'transparent',padding:'2px 6px',borderRadius:2}}>{yes?'YES':'—'}</span>;
+  };
+
+  return <div style={{padding:22}}>
+    <div style={{display:'flex',alignItems:'flex-start',gap:12,marginBottom:16}}>
+      <div>
+        <h2 style={{fontSize:17,fontWeight:700,color:t.text}}>{type==='nogo'?'No Kings Events (30 Days Out)':type==='mayday'?'May Day Events (Until May 2, 2026)':'3-Day Events'}</h2>
+        <p style={{fontSize:11,color:t.textMuted,marginTop:2}}>{data.length} events · {subtitle}</p>
+      </div>
+      <div style={{marginLeft:'auto',display:'flex',gap:8,alignItems:'center'}}>
+        <div style={{display:'flex',alignItems:'center',gap:8,background:t.surface,border:`1px solid ${t.border}`,
+          borderRadius:4,padding:'6px 12px'}}>
+          <Icon id="search" size={13} color={t.textMuted}/>
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search events, properties…"
+            style={{border:'none',outline:'none',fontSize:12,background:'transparent',color:t.text,width:200}}/>
+        </div>
+      </div>
+    </div>
+    <div style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:4,overflow:'hidden'}}>
+      <div style={{overflowX:'auto',maxHeight:'calc(100vh - 220px)',overflowY:'auto'}}>
+        <table style={{width:'100%',borderCollapse:'collapse'}}>
+          <thead><tr>
+            <TH col="property_name">Property</TH>
+            <TH col="event_title">Event</TH>
+            <TH col="event_type">Type</TH>
+            <TH col="event_date">Date / Time</TH>
+            <TH col="event_location">Location</TH>
+            <TH col="distance_mi" right>Distance</TH>
+            <TH col="is_new">New</TH>
+            <TH col="is_duplicate">Dup</TH>
+            <TH col="is_recurring">Recur</TH>
+          </tr></thead>
+          <tbody>
+            {data.map((ev,i)=>{
+              const dist=parseFloat(ev.distance_mi)||99;
+              const bandBg=dist<1?`${t.critical}08`:dist<2?`${t.high}06`:'transparent';
+              const isNew=(ev.is_new||'').toLowerCase()==='yes';
+              return <tr key={i}
+                onMouseEnter={()=>setHovered(i)} onMouseLeave={()=>setHovered(null)}
+                style={{background:hovered===i?`${t.accent}0a`:bandBg,transition:'background .1s',fontWeight:isNew?600:400}}>
+                <td style={{...tdBase,fontWeight:500,maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ev.property_name}</td>
+                <td style={{...tdBase,maxWidth:220}}>
+                  <div style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ev.event_title}</div>
+                  {ev.event_url&&<a href={ev.event_url} target="_blank" rel="noopener" style={{fontSize:10,color:t.accent}}>link</a>}
+                </td>
+                <td style={{...tdBase,fontSize:11}}>{ev.event_type}</td>
+                <td style={{...tdBase,...mono,fontSize:10}}>{ev.event_date}</td>
+                <td style={{...tdBase,fontSize:11,maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ev.event_location}</td>
+                <td style={{...tdBase,...mono,fontWeight:700,textAlign:'right',
+                  color:dist<1?t.critical:dist<2?t.high:t.low,fontSize:13}}>{dist.toFixed(2)}</td>
+                <td style={tdBase}>{flagCell(ev.is_new)}</td>
+                <td style={tdBase}>{flagCell(ev.is_duplicate)}</td>
+                <td style={tdBase}>{flagCell(ev.is_recurring)}</td>
+              </tr>;
+            })}
+            {data.length===0&&<tr><td colSpan={9} style={{padding:40,textAlign:'center',color:t.textMuted,fontSize:13}}>
+              {search?`No events match "${search}"`:'No events in this window'}</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      <div style={{padding:'8px 14px',borderTop:`1px solid ${t.border}`,display:'flex',justifyContent:'space-between',background:`${t.border}33`}}>
+        <span style={{...mono,fontSize:10,color:t.textMuted}}>{data.length} records · sorted by {sortCol}</span>
+        <span style={{...mono,fontSize:10,color:t.textMuted}}>Distance bands: <span style={{color:t.critical}}>●</span> &lt;1mi <span style={{color:t.high}}>●</span> 1-2mi <span style={{color:t.low}}>●</span> &gt;2mi</span>
+      </div>
+    </div>
+  </div>;
+};
+
+/* ═══ MAP VIEW ═════════════════════════════════════════════════ */
+const MapView=({t,markers})=>{
+  const mapRef=useRef(null);
+  const mapInst=useRef(null);
+  const [filter,setFilter]=useState('all');
+
+  useEffect(()=>{
+    if(mapInst.current){mapInst.current.remove();mapInst.current=null;}
+    if(!mapRef.current||!markers) return;
+    const map=L.map(mapRef.current,{zoomControl:false}).setView([38,-96],4);
+    L.control.zoom({position:'topleft'}).addTo(map);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
+      attribution:'&copy; CARTO',maxZoom:18}).addTo(map);
+    const colors={critical:'#dc2626',high:'#ea580c',medium:'#b45309',low:'#15803d'};
+    (markers||[]).forEach(m=>{
+      if(filter!=='all'&&m.threat!==filter) return;
+      const c=colors[m.threat]||'#888';
+      const circle=L.circleMarker([m.lat,m.lon],{radius:6+m.count*2,fillColor:c,color:'#fff',
+        weight:1.5,fillOpacity:.85,opacity:.9}).addTo(map);
+      circle.bindPopup(`<div style="min-width:160px"><b>${m.name}</b><br/><span style="color:#888">${m.type||''}</span><br/><span style="font-size:10px;color:${c};font-weight:700">${m.dist.toFixed(2)} mi</span></div>`);
+    });
+    mapInst.current=map;
+    return ()=>{if(mapInst.current){mapInst.current.remove();mapInst.current=null;}};
+  },[filter,markers]);
+
+  const colors={critical:'#dc2626',high:'#ea580c',low:'#15803d'};
+  const counts={all:(markers||[]).length};
+  ['critical','high','low'].forEach(lv=>{counts[lv]=(markers||[]).filter(m=>m.threat===lv).length;});
+
+  return <div style={{height:'100%',display:'flex',flexDirection:'column'}}>
+    <div style={{padding:'8px 16px',display:'flex',alignItems:'center',gap:8,
+      borderBottom:`1px solid ${t.border}`,background:t.surface,flexShrink:0}}>
+      <span style={{...mono,fontSize:10,color:t.textMuted,letterSpacing:'.08em',marginRight:4}}>FILTER</span>
+      {['all','critical','high','low'].map(lv=><button key={lv} onClick={()=>setFilter(lv)} style={{
+        ...mono,fontSize:9,fontWeight:600,letterSpacing:'.06em',padding:'4px 10px',borderRadius:3,cursor:'pointer',
+        textTransform:'uppercase',transition:'all .12s',
+        border:filter===lv?`1px solid ${lv==='all'?t.accent:colors[lv]}`:`1px solid ${t.border}`,
+        background:filter===lv?(lv==='all'?t.accentBg:`${colors[lv]}15`):'transparent',
+        color:filter===lv?(lv==='all'?t.accent:colors[lv]):t.textMuted}}>
+        {lv==='all'?'All':lv==='critical'?'< 1 mi':lv==='high'?'1-2 mi':'> 2 mi'} ({counts[lv]})
+      </button>)}
+      <span style={{marginLeft:'auto',...mono,fontSize:10,color:t.textMuted}}>
+        {counts[filter==='all'?'all':filter]} markers · Dark tiles
+      </span>
+    </div>
+    <div ref={mapRef} style={{flex:1,minHeight:0}}/>
+    <div style={{position:'absolute',bottom:16,right:16,zIndex:1000,
+      background:'rgba(10,22,40,.92)',borderRadius:6,padding:'10px 14px',border:'1px solid rgba(255,255,255,.1)'}}>
+      <div style={{...mono,fontSize:9,color:'#8ca3c0',letterSpacing:'.1em',marginBottom:6}}>DISTANCE</div>
+      {[{lv:'critical',label:'< 1 mile'},{lv:'high',label:'1-2 miles'},{lv:'low',label:'> 2 miles'}].map(x=>
+        <div key={x.lv} style={{display:'flex',alignItems:'center',gap:8,marginBottom:3}}>
+          <div style={{width:10,height:10,borderRadius:'50%',background:colors[x.lv],border:'1.5px solid rgba(255,255,255,.3)'}}/>
+          <span style={{...mono,fontSize:10,color:'#c8ddf5'}}>{x.label}</span>
+        </div>
+      )}
+    </div>
+  </div>;
+};
+
+/* ═══ ORGANIZERS ═══════════════════════════════════════════════ */
+const Organizers=({t,orgs})=>{
+  const maxOrg=Math.max(...(orgs||[]).map(o=>o.count),1);
+  if(!orgs||!orgs.length) return <div style={{padding:40,textAlign:'center',color:t.textMuted}}>No organizer data available</div>;
+  return <div style={{padding:22}}>
+    <h2 style={{fontSize:17,fontWeight:700,color:t.text,marginBottom:4}}>Event Organizers</h2>
+    <p style={{fontSize:11,color:t.textMuted,marginBottom:16}}>Combined activity across 3-Day + No Kings windows · {orgs.length} organizers</p>
+    <div style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:4,padding:16}}>
+      {orgs.slice(0,30).map((o,i)=><div key={o.name} style={{display:'flex',alignItems:'center',gap:10,
+        padding:'7px 0',borderBottom:i<Math.min(orgs.length,30)-1?`1px solid ${t.border}`:'none'}}>
+        <span style={{...mono,fontSize:10,fontWeight:700,color:t.textMuted,width:20,textAlign:'center'}}>{i+1}</span>
+        <span style={{fontSize:12,fontWeight:500,color:t.text,width:200,flexShrink:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{o.name}</span>
+        <span style={{fontSize:10,color:t.textMuted,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{o.types}</span>
+        <div style={{width:90,height:6,borderRadius:3,background:`${t.border}`,overflow:'hidden',flexShrink:0}}>
+          <div style={{width:`${(o.count/maxOrg)*100}%`,height:'100%',background:t.accent,borderRadius:3}}/>
+        </div>
+        <span style={{...mono,fontSize:11,fontWeight:700,color:t.accent,width:22,textAlign:'right'}}>{o.count}</span>
+      </div>)}
+    </div>
+  </div>;
+};
+
+/* ═══ TRENDS ═══════════════════════════════════════════════════ */
+const Trends=({t,data})=>{
+  const canvasRef=useRef(null);
+  const runs=data?.trend_data?.runs||[];
+  useEffect(()=>{
+    if(!canvasRef.current||!runs.length) return;
+    const isDarkBg=(()=>{const b=t.bg||'#fff';const m=b.match(/[0-9a-f]{2}/gi);if(!m)return false;const [r,g,bl]=m.map(x=>parseInt(x,16));return (r+g+bl)/3<128;})();
+    const gridColor=isDarkBg?'rgba(255,255,255,.08)':'rgba(0,0,0,.08)';
+    const labels=runs.map(r=>{try{return new Date(r.timestamp).toLocaleDateString('en-US',{month:'short',day:'numeric'});}catch{return r.timestamp||'';}});
+    const chart=new Chart(canvasRef.current,{
+      type:'line',
+      data:{labels,datasets:[
+        {label:'3-Day',data:runs.map(r=>r.gen_total??0),borderColor:t.accent,backgroundColor:`${t.accent}22`,tension:.3,fill:false},
+        {label:'No Kings',data:runs.map(r=>r.nk_total??0),borderColor:'#7c3aed',backgroundColor:'#7c3aed22',tension:.3,fill:false},
+        {label:'May Day',data:runs.map(r=>r.md_total??0),borderColor:'#ef4444',backgroundColor:'#ef444422',tension:.3,fill:false},
+      ]},
+      options:{responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{labels:{color:t.text,font:{family:"'IBM Plex Sans'",size:11}}}},
+        scales:{x:{ticks:{color:t.textMuted},grid:{color:gridColor}},y:{beginAtZero:true,ticks:{color:t.textMuted},grid:{color:gridColor}}},
+      },
+    });
+    return ()=>chart.destroy();
+  },[runs,t]);
+  if(!runs.length) return <div style={{padding:40,textAlign:'center',color:t.textMuted,fontSize:13}}>No trend data yet · Trends populate after multiple scheduled runs</div>;
+  return <div style={{padding:22}}>
+    <h2 style={{fontSize:17,fontWeight:700,color:t.text,marginBottom:4}}>Event Volume Trends</h2>
+    <p style={{fontSize:11,color:t.textMuted,marginBottom:16}}>Totals per run across 3-Day, No Kings, and May Day streams · {runs.length} runs tracked</p>
+    <div style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:4,padding:20,height:'calc(100vh - 200px)',position:'relative'}}>
+      <canvas ref={canvasRef}/>
+    </div>
+  </div>;
+};
+
+/* ═══ TWEAKS ═══════════════════════════════════════════════════ */
+const TweaksPanel=({t,variant,setVariant})=><div style={{
+  position:'fixed',bottom:20,right:20,width:250,background:t.surface,border:`1px solid ${t.borderStrong}`,
+  borderRadius:8,padding:18,boxShadow:'0 12px 40px rgba(0,0,0,.18)',zIndex:9999}}>
+  <div style={{fontSize:11,fontWeight:700,color:t.text,marginBottom:14,letterSpacing:'.06em'}}>TWEAKS</div>
+  <div style={{fontSize:10,color:t.textMuted,marginBottom:10,textTransform:'uppercase',letterSpacing:'.08em'}}>Design variant</div>
+  <div style={{display:'flex',gap:8}}>
+    {Object.entries(THEMES).map(([k,th])=><button key={k} onClick={()=>setVariant(k)} style={{
+      flex:1,padding:'10px 0',borderRadius:4,border:`2px solid ${variant===k?t.accent:t.border}`,
+      background:variant===k?t.accentBg:'transparent',color:variant===k?t.accent:t.textMuted,
+      fontSize:11,fontWeight:700,cursor:'pointer',letterSpacing:'.08em',transition:'all .15s'}}>{th.label}</button>)}
+  </div>
+</div>;
+
+/* ═══ APP ══════════════════════════════════════════════════════ */
+function applyDark(base){
+  return {...base,
+    bg:'#0d1117', surface:'#161b22', border:'#30363d', borderStrong:'#484f58',
+    text:'#e6edf3', textSub:'#8b949e', textMuted:'#6e7681',
+  };
+}
+
+const App=()=>{
+  const saved=(()=>{try{return JSON.parse(localStorage.getItem('pt2_state')||'{}')}catch{return{}}})();
+  const [variant,setVariant]=useState(saved.variant||TWEAK_DEFAULTS.variant);
+  const [view,setView]=useState(saved.view||'dashboard');
+  const [darkMode,setDarkMode]=useState(saved.dark==='1');
+  const [tweaks,setTweaks]=useState(false);
+  const base=THEMES[variant]||THEMES.ops;
+  const t=darkMode?applyDark(base):base;
+
+  const {data,err}=useData();
+  const stats=useMemo(()=>deriveStats(data),[data]);
+
+  const persist=(k,v)=>{const s=JSON.parse(localStorage.getItem('pt2_state')||'{}');s[k]=v;localStorage.setItem('pt2_state',JSON.stringify(s));};
+  const handleVariant=v=>{setVariant(v);persist('variant',v);window.parent.postMessage({type:'__edit_mode_set_keys',edits:{variant:v}},'*');};
+  const handleView=v=>{setView(v);persist('view',v);};
+  const handleDark=()=>{const nv=!darkMode;setDarkMode(nv);persist('dark',nv?'1':'0');};
+
+  useEffect(()=>{
+    const fn=e=>{
+      if(e.data?.type==='__activate_edit_mode') setTweaks(true);
+      if(e.data?.type==='__deactivate_edit_mode') setTweaks(false);
+    };
+    window.addEventListener('message',fn);
+    window.parent.postMessage({type:'__edit_mode_available'},'*');
+    return ()=>window.removeEventListener('message',fn);
+  },[]);
+
+  if(err) return <div style={{padding:60,textAlign:'center',fontFamily:'IBM Plex Sans',color:'#666'}}>
+    <h2 style={{marginBottom:12}}>Could not load dashboard_data.json</h2>
+    <p>Make sure <code>dashboard_data.json</code> is in the same folder as this file.</p>
+    <p style={{marginTop:8,fontSize:12,color:'#999'}}>Error: {err}</p>
+    <a href="classic.html" style={{display:'inline-block',marginTop:16,color:'#2563eb'}}>← Switch to Classic Dashboard</a>
+  </div>;
+
+  return <div style={{display:'flex',height:'100vh',overflow:'hidden',background:t.bg}}>
+    <Sidebar t={t} view={view} setView={handleView} generated={stats?.generated}/>
+    <div style={{flex:1,display:'flex',flexDirection:'column',minWidth:0,overflow:'hidden'}}>
+      <TopBar t={t} view={view} generated={stats?.generated} darkMode={darkMode} handleDark={handleDark}/>
+      <div style={{flex:1,overflowY:'auto',position:'relative'}}>
+        {view==='dashboard'&&<Dashboard t={t} stats={stats} data={data}/>}
+        {view==='events3'&&<EventsTable t={t} rows={data?.general?.rows} type="3day" subtitle={stats?.genSubtitle||''}/>}
+        {view==='nogo'&&<EventsTable t={t} rows={data?.no_kings?.rows} type="nogo" subtitle={stats?.nkSubtitle||''}/>}
+        {view==='mayday'&&<EventsTable t={t} rows={data?.may_day?.rows} type="mayday" subtitle={stats?.mdSubtitle||''}/>}
+        {view==='map'&&<MapView t={t} markers={stats?.markers}/>}
+        {view==='organizers'&&<Organizers t={t} orgs={stats?.orgs}/>}
+        {view==='trends'&&<Trends t={t} data={data}/>}
+      </div>
+    </div>
+    {tweaks&&<TweaksPanel t={t} variant={variant} setVariant={handleVariant}/>}
+  </div>;
+};
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
