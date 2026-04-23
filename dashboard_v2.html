@@ -487,6 +487,10 @@ const EventModal=({t,ev,onClose})=>{
           <div style={{...mono,fontSize:9,fontWeight:700,color:t.textMuted,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:3}}>Location</div>
           <div style={{fontSize:12,color:t.text,wordBreak:'break-word'}}>{ev.event_location||'—'}</div>
         </div>
+        {(ev.rsvp_count>0)&&<div>
+          <div style={{...mono,fontSize:9,fontWeight:700,color:t.textMuted,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:3}}>RSVPs</div>
+          <div style={{...mono,fontSize:16,fontWeight:700,color:dist<1?t.critical:dist<2?t.high:t.low}}>{ev.rsvp_count.toLocaleString()}</div>
+        </div>}
       </div>
       {/* Sponsor */}
       {(ev.sponsor_name||ev.sponsor_email||ev.sponsor_phone||ev.sponsor_website)&&<div style={{padding:'14px 22px',borderBottom:`1px solid ${t.border}`}}>
@@ -507,8 +511,11 @@ const EventModal=({t,ev,onClose})=>{
       {slots.length>1&&<div style={{padding:'14px 22px',borderBottom:`1px solid ${t.border}`}}>
         <div style={{...mono,fontSize:9,fontWeight:700,color:t.textMuted,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:6}}>All Timeslots ({slots.length})</div>
         <div style={{maxHeight:160,overflowY:'auto'}}>
-          {slots.map((ts,i)=><div key={i} style={{...mono,fontSize:11,color:t.text,padding:'3px 0',
-            borderBottom:i<slots.length-1?`1px solid ${t.border}`:'none'}}>{fmtTs(ts.start_iso)}</div>)}
+          {slots.map((ts,i)=><div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center',
+            padding:'4px 0',borderBottom:i<slots.length-1?`1px solid ${t.border}`:'none'}}>
+            <span style={{...mono,fontSize:11,color:t.text}}>{fmtTs(ts.start_iso)}</span>
+            {ts.rsvps>0&&<span style={{...mono,fontSize:10,fontWeight:700,color:t.textSub}}>{ts.rsvps.toLocaleString()} RSVPs</span>}
+          </div>)}
         </div>
       </div>}
       {/* Tags */}

@@ -327,14 +327,18 @@ def expand_event(event: dict, prop: dict, stats: dict | None = None) -> list[dic
     accessibility_notes = (event.get("accessibility_notes") or "").strip()
 
     all_timeslots = []
+    total_rsvps = 0
     for ts in event.get("timeslots") or []:
         s = ts.get("start_date")
         e = ts.get("end_date")
         if not s:
             continue
+        rsvps = ts.get("registered_count") or 0
+        total_rsvps += rsvps
         all_timeslots.append({
             "start_iso": datetime.fromtimestamp(s, tz=timezone.utc).isoformat(),
             "end_iso":   datetime.fromtimestamp(e, tz=timezone.utc).isoformat() if e else "",
+            "rsvps":     rsvps,
         })
 
     e_lat = round(float(elat), 6) if elat is not None else ""
@@ -368,6 +372,7 @@ def expand_event(event: dict, prop: dict, stats: dict | None = None) -> list[dic
             "is_virtual":     is_virtual,
             "accessibility_notes": accessibility_notes,
             "all_timeslots":  all_timeslots,
+            "rsvp_count":     total_rsvps,
             "event_lat":      e_lat,
             "event_lon":      e_lon,
             "prop_lat":       round(float(prop["lat"]), 6),
@@ -1177,7 +1182,7 @@ def build_dashboard_json(general_rows: list[dict], no_kings_rows: list[dict],
     _DASHBOARD_EXTRA = ["event_lat", "event_lon", "prop_lat", "prop_lon",
                         "sponsor_name", "sponsor_email", "sponsor_phone", "sponsor_website",
                         "featured_image_url", "description", "tags", "is_virtual",
-                        "accessibility_notes", "all_timeslots",
+                        "accessibility_notes", "all_timeslots", "rsvp_count",
                         "first_seen_iso"]
 
     def _clean(rows):
