@@ -22,6 +22,7 @@ import csv
 import json
 import math
 import os
+import re
 import sys
 import time
 from datetime import datetime, timedelta, timezone
@@ -63,6 +64,16 @@ DAYS_GENERAL      = 3    # 3-day event window
 DAYS_NO_KINGS     = 30   # No Kings event window
 
 NO_KINGS_KEYWORDS = ["no kings", "nokings", "no_kings", "#nokings", "50501"]
+
+# May Day 2026 — separate window that runs from "now" until end-of-day May 2 2026.
+MAY_DAY_END_DATE = datetime(2026, 5, 2, 23, 59, 59, tzinfo=_EASTERN)
+MAY_DAY_KEYWORDS = [
+    "may day", "mayday", "may 1", "m1",
+    "workers day", "international workers",
+    "#mayday", "#mayday2026",
+]
+# Public mobilize.us feed that powers the nea.org/mayday-toolkit map.
+MAY_DAY_FEED_URL = "https://www.mobilize.us/mayday/"
 
 # Event types to EXCLUDE from all sheets (pure campaign/admin work, meetings).
 EXCLUDE_TYPES = {"PHONE_BANK", "TEXT_BANK", "AUTOMATED_PHONE_BANK", "LETTER_WRITING",
@@ -341,6 +352,35 @@ def is_no_kings(event: dict) -> bool:
     return any(kw in text for kw in NO_KINGS_KEYWORDS)
 
 
+def is_may_day(event: dict) -> bool:
+    text = (
+        (event.get("title") or "") + " " + (event.get("description") or "")
+    ).lower()
+    return any(kw in text for kw in MAY_DAY_KEYWORDS)
+
+
+def fetch_mayday_tagged_ids() -> set[int]:
+    """Scrape the public mobilize.us/mayday/ feed for event IDs.
+
+    This is the same feed that powers NEA's May Day toolkit map, so events
+    surfaced here are explicitly curated as May-Day-aligned even if their
+    title/description doesn't match our keyword list.
+
+    Best-effort: returns an empty set on any network or parsing error so the
+    keyword match still works as a floor.
+    """
+    try:
+        resp = requests.get(MAY_DAY_FEED_URL, timeout=15,
+                            headers={"User-Agent": "Protest-Tracker/1.0"})
+        resp.raise_for_status()
+        # Feed renders event cards with links like /mayday/event/12345/ or /event/12345/
+        ids = {int(m) for m in re.findall(r'/event/(\d+)', resp.text)}
+        return ids
+    except Exception as e:
+        print(f"  ⚠ Could not fetch May Day feed ({e}); falling back to keyword match only")
+        return set()
+
+
 def get_first_seen_map(cache_path: str) -> dict:
     """Return {str(event_id): iso_timestamp} from the cache artifact.
     Returns an empty dict if the cache doesn't exist or has no first_seen data.
@@ -505,7 +545,7 @@ def cluster_query_params(cluster: list[dict]) -> tuple[str, int]:
 
 def collect_events(
     properties: list[dict],
-) -> tuple[list[dict], list[dict]]:
+) -> tuple[list[dict], list[dict], list[dict]]:
     """
     Cluster properties geographically, then fire one Mobilize.us API query
     per cluster instead of one per zip code.  Typical reduction: ~200 calls
@@ -514,55 +554,81 @@ def collect_events(
     Returns:
       general_rows  – protest-type events within DAYS_GENERAL days
       no_kings_rows – No Kings events within DAYS_NO_KINGS days
-    Both lists are sorted by event start time.
+      may_day_rows  – May Day events between now and MAY_DAY_END_DATE
+    All lists are sorted by event start time.
     """
     now_ts  = int(datetime.now(tz=timezone.utc).timestamp())
     end_30d = now_ts + DAYS_NO_KINGS * 86_400
     end_3d  = now_ts + DAYS_GENERAL  * 86_400
+    end_md  = int(MAY_DAY_END_DATE.timestamp())
+    # Use the widest end-window so one API call covers general + no_kings + may_day.
+    api_end = max(end_30d, end_md)
 
     clusters = cluster_properties(properties)
     print(f"  Clustered {len(properties)} properties into {len(clusters)} geographic groups.\n")
 
+    # Pre-fetch the curated May Day event IDs from the public mobilize.us feed.
+    # This is a union with the keyword match so we catch events that don't mention
+    # "May Day" explicitly but are listed on the nationwide toolkit feed.
+    print("  Fetching curated May Day feed …")
+    mayday_tagged = fetch_mayday_tagged_ids()
+    print(f"     → {len(mayday_tagged)} event(s) on mobilize.us/mayday/ feed\n")
+
     general_rows:  list[dict] = []
     no_kings_rows: list[dict] = []
+    may_day_rows:  list[dict] = []
     seen_general:  set[tuple] = set()
     seen_no_kings: set[tuple] = set()
+    seen_may_day:  set[tuple] = set()
 
     stats = {"no_coords": 0, "too_far": 0, "excluded_type": 0,
              "outside_window": 0, "passed": 0}
+
+    def _loc_key(row: dict):
+        """Location key used for No Kings / May Day dedup across hosts."""
+        lat, lon = row["event_lat"], row["event_lon"]
+        if lat != "" and lon != "":
+            return (round(float(lat), 4), round(float(lon), 4))
+        return row["event_location"]  # fallback for virtual / TBD
 
     def process_events(events: list[dict], cluster: list[dict]) -> None:
         for ev in events:
             eid       = ev.get("id")
             etype_raw = (ev.get("event_type") or "OTHER").upper()
             no_kings  = is_no_kings(ev)
+            may_day   = is_may_day(ev) or (eid in mayday_tagged)
             for prop in cluster:
                 rows = expand_event(ev, prop, stats)
                 if not rows:
                     continue
                 for row in rows:
                     ts_key = (eid, prop["id"], row["event_dt_sort"])
+                    row_ts = row["event_dt_sort"].timestamp()
                     if etype_raw in EXCLUDE_TYPES:
                         stats["excluded_type"] += 1
-                    elif row["event_dt_sort"].timestamp() > end_3d:
+                    elif row_ts > end_3d:
                         stats["outside_window"] += 1
-                    elif ts_key not in seen_general and not no_kings:
+                    elif (ts_key not in seen_general
+                          and not no_kings and not may_day):
                         seen_general.add(ts_key)
                         general_rows.append(row)
                         stats["passed"] += 1
+
                     if no_kings and etype_raw not in EXCLUDE_TYPES:
                         # Deduplicate by location + timeslot + property.
                         # Multiple organizers often post separate Mobilize events
                         # for the same physical protest; collapse them to one row.
-                        lat, lon = row["event_lat"], row["event_lon"]
-                        if lat != "" and lon != "":
-                            loc_key = (round(float(lat), 4), round(float(lon), 4))
-                        else:
-                            loc_key = row["event_location"]  # fallback for virtual
-                        nk_key = (loc_key, row["event_dt_sort"], prop["id"])
+                        nk_key = (_loc_key(row), row["event_dt_sort"], prop["id"])
                         if nk_key not in seen_no_kings:
                             seen_no_kings.add(nk_key)
                             no_kings_rows.append(row)
+
+                    if (may_day and etype_raw not in EXCLUDE_TYPES
+                            and row_ts <= end_md):
+                        md_key = (_loc_key(row), row["event_dt_sort"], prop["id"])
+                        if md_key not in seen_may_day:
+                            seen_may_day.add(md_key)
+                            may_day_rows.append(row)
 
     # ── First pass ────────────────────────────────────────────────────────────
     retry_queue: list[list[dict]] = []   # clusters that hit 429 on first pass
@@ -583,7 +649,7 @@ def collect_events(
             print(f"  [{idx:>3}/{len(clusters)}] {label}")
 
         try:
-            events = fetch_events_for_zip(zip_code, query_radius, now_ts, end_30d)
+            events = fetch_events_for_zip(zip_code, query_radius, now_ts, api_end)
             if bar is not None:
                 bar.set_postfix(events=len(events), refresh=True)
             else:
@@ -611,7 +677,7 @@ def collect_events(
                 names = cluster[0]["name"]
                 print(f"  [retry {attempt_num}/{MAX_RETRIES}] zip={zip_code}  ({names})")
                 try:
-                    events = fetch_events_for_zip(zip_code, query_radius, now_ts, end_30d)
+                    events = fetch_events_for_zip(zip_code, query_radius, now_ts, api_end)
                     print(f"           → {len(events)} event(s) returned")
                     process_events(events, cluster)
                     time.sleep(5)
@@ -648,7 +714,8 @@ def collect_events(
 
     general_rows.sort(key=lambda r: r["event_dt_sort"])
     no_kings_rows.sort(key=lambda r: r["event_dt_sort"])
-    return general_rows, no_kings_rows
+    may_day_rows.sort(key=lambda r: r["event_dt_sort"])
+    return general_rows, no_kings_rows, may_day_rows
 
 
 # ── Excel helpers ──────────────────────────────────────────────────────────────
@@ -924,11 +991,12 @@ CACHE_FILE = "protest_tracker_cache.json"
 
 
 def save_cache(general_rows: list[dict], no_kings_rows: list[dict],
+               may_day_rows: list[dict] | None = None,
                path: str = CACHE_FILE,
                first_seen_map: dict | None = None) -> None:
     def _serialize(rows):
         out = []
-        for r in rows:
+        for r in rows or []:
             d = dict(r)
             if isinstance(d.get("event_dt_sort"), datetime):
                 d["event_dt_sort"] = d["event_dt_sort"].isoformat()
@@ -939,31 +1007,34 @@ def save_cache(general_rows: list[dict], no_kings_rows: list[dict],
         json.dump({
             "general":    _serialize(general_rows),
             "no_kings":   _serialize(no_kings_rows),
+            "may_day":    _serialize(may_day_rows),
             "first_seen": first_seen_map or {},
         }, f)
     print(f"  ✓ Data cache saved → {path}")
 
 
-def load_cache(path: str = CACHE_FILE) -> tuple[list[dict], list[dict]]:
+def load_cache(path: str = CACHE_FILE) -> tuple[list[dict], list[dict], list[dict]]:
     with open(path) as f:
         data = json.load(f)
 
     def _deserialize(rows):
         out = []
-        for r in rows:
+        for r in rows or []:
             d = dict(r)
             if isinstance(d.get("event_dt_sort"), str):
                 d["event_dt_sort"] = datetime.fromisoformat(d["event_dt_sort"])
             out.append(d)
         return out
 
-    return _deserialize(data["general"]), _deserialize(data["no_kings"])
+    return (_deserialize(data.get("general", [])),
+            _deserialize(data.get("no_kings", [])),
+            _deserialize(data.get("may_day", [])))
 
 
 # ── Build workbook ─────────────────────────────────────────────────────────────
 
 def build_excel(general_rows: list[dict], no_kings_rows: list[dict],
-                output_path: str) -> None:
+                may_day_rows: list[dict], output_path: str) -> None:
     wb = Workbook()
 
     # Summary sheet
@@ -1000,14 +1071,31 @@ def build_excel(general_rows: list[dict], no_kings_rows: list[dict],
                         f"  •  Source: Mobilize.us"),
     )
 
+    # May Day sheet
+    ws_md = wb.create_sheet("May Day Events")
+    end_md_str = MAY_DAY_END_DATE.strftime("%B %d, %Y")
+    write_data_sheet(
+        ws_md, may_day_rows,
+        title_fill   = HDR_PURPLE,
+        col_hdr_fill = COL_PURPLE,
+        alt_fill     = ALT_PURPLE,
+        sheet_title  = "May Day 2026 Events — Near Tracked Properties",
+        subtitle     = (f"{now_str}  through  {end_md_str}"
+                        f"  •  Within {SEARCH_RADIUS_MI} miles of property"
+                        f"  •  Source: Mobilize.us + mobilize.us/mayday/ feed"),
+    )
+
     wb.save(output_path)
     print(f"\n  ✓ Excel workbook saved → {output_path}")
 
 
 def update_trend_data(general_rows: list[dict], no_kings_rows: list[dict],
+                       may_day_rows: list[dict] | None = None,
                        path: str = "trend_data.json") -> None:
     """Append a summary entry to trend_data.json for historical charting."""
     import json as _json
+
+    may_day_rows = may_day_rows or []
 
     def _band_counts(rows):
         red   = sum(1 for r in rows if (float(r.get("distance_mi") or 9999)) < 1)
@@ -1019,6 +1107,7 @@ def update_trend_data(general_rows: list[dict], no_kings_rows: list[dict],
     now = datetime.now(_EASTERN)
     gr, ga, gg, gn = _band_counts(general_rows)
     nr, na, ng, nn = _band_counts(no_kings_rows)
+    mr, ma, mg, mn = _band_counts(may_day_rows)
     entry = {
         "ts":        now.isoformat(timespec="seconds"),
         "label":     now.strftime("%b %d"),
@@ -1028,6 +1117,9 @@ def update_trend_data(general_rows: list[dict], no_kings_rows: list[dict],
         "nk_total":  len(no_kings_rows),
         "nk_new":    nn,
         "nk_red":    nr, "nk_amber":  na, "nk_green":  ng,
+        "md_total":  len(may_day_rows),
+        "md_new":    mn,
+        "md_red":    mr, "md_amber":  ma, "md_green":  mg,
     }
     try:
         with open(path) as f:
@@ -1042,11 +1134,14 @@ def update_trend_data(general_rows: list[dict], no_kings_rows: list[dict],
 
 
 def build_dashboard_json(general_rows: list[dict], no_kings_rows: list[dict],
+                          may_day_rows: list[dict] | None = None,
                           output_path: str = "dashboard_data.json") -> None:
     import json as _json
+    may_day_rows = may_day_rows or []
     now = datetime.now(_EASTERN)
     end_3d  = (now + timedelta(days=DAYS_GENERAL)).strftime("%B %d, %Y")
     end_30d = (now + timedelta(days=DAYS_NO_KINGS)).strftime("%B %d, %Y")
+    end_md  = MAY_DAY_END_DATE.strftime("%B %d, %Y")
 
     _DASHBOARD_EXTRA = ["event_lat", "event_lon", "prop_lat", "prop_lon", "sponsor_name",
                         "first_seen_iso"]
@@ -1073,11 +1168,16 @@ def build_dashboard_json(general_rows: list[dict], no_kings_rows: list[dict],
             "subtitle": f"{now.strftime('%B %d, %Y')}  through  {end_30d}  •  Within {SEARCH_RADIUS_MI} miles",
             "rows": _clean(no_kings_rows),
         },
+        "may_day": {
+            "title": "May Day 2026",
+            "subtitle": f"{now.strftime('%B %d, %Y')}  through  {end_md}  •  Within {SEARCH_RADIUS_MI} miles",
+            "rows": _clean(may_day_rows),
+        },
     }
     with open(output_path, "w") as f:
         _json.dump(payload, f)
     print(f"  ✓ Dashboard JSON saved  → {output_path}")
-    update_trend_data(general_rows, no_kings_rows)
+    update_trend_data(general_rows, no_kings_rows, may_day_rows)
 
 
 # ── Entry point ────────────────────────────────────────────────────────────────
@@ -1130,12 +1230,14 @@ def main() -> None:
             print(f"\n  ERROR: cache file not found: {args.cache}", file=sys.stderr)
             sys.exit(1)
         print(f"\nLoading cached data from {args.cache} …")
-        general_rows, no_kings_rows = load_cache(args.cache)
+        general_rows, no_kings_rows, may_day_rows = load_cache(args.cache)
         print(f"  3-Day events   : {len(general_rows)} rows")
         print(f"  No Kings events: {len(no_kings_rows)} rows")
+        print(f"  May Day events : {len(may_day_rows)} rows")
         # Collapse in case this cache predates the timeslot-collapse feature
         general_rows  = collapse_recurring_timeslots(general_rows)
         no_kings_rows = collapse_recurring_timeslots(no_kings_rows)
+        may_day_rows  = collapse_recurring_timeslots(may_day_rows)
     else:
         print(f"  Properties CSV : {args.csv}")
         print(f"  Output file    : {args.output}")
@@ -1144,6 +1246,7 @@ def main() -> None:
         print(f"  Cluster radius : {CLUSTER_RADIUS_MI} miles (properties grouped for fewer API calls)")
         print(f"  General window : today + {DAYS_GENERAL} days")
         print(f"  No Kings window: today + {DAYS_NO_KINGS} days")
+        print(f"  May Day window : today → {MAY_DAY_END_DATE.strftime('%b %d, %Y')}")
         print("=" * 64)
 
         properties = load_properties(args.csv)
@@ -1161,36 +1264,42 @@ def main() -> None:
         now_iso = datetime.now(timezone.utc).isoformat()
         print(f"  Previous cache : {len(first_seen_map)} known event IDs for new-event detection")
 
-        general_rows, no_kings_rows = collect_events(properties)
+        general_rows, no_kings_rows, may_day_rows = collect_events(properties)
 
         print(f"\n{'─'*64}")
         print(f"  3-Day events found        : {len(general_rows)} property-event rows")
         print(f"  No Kings events found     : {len(no_kings_rows)} property-event rows")
+        print(f"  May Day events found      : {len(may_day_rows)} property-event rows")
         print(f"{'─'*64}")
 
         print("\nAnnotating event flags (new / duplicate / recurring) …")
         annotate_event_flags(general_rows,  first_seen_map, now_iso)
         annotate_event_flags(no_kings_rows, first_seen_map, now_iso)
+        annotate_event_flags(may_day_rows,  first_seen_map, now_iso)
         new_g  = sum(1 for r in general_rows  if r.get("is_new"))
         new_nk = sum(1 for r in no_kings_rows if r.get("is_new"))
+        new_md = sum(1 for r in may_day_rows  if r.get("is_new"))
         dup_g  = sum(1 for r in general_rows  if r.get("is_duplicate"))
         rec_g  = sum(1 for r in general_rows  if r.get("is_recurring"))
         print(f"  New events (3-day)        : {new_g}")
         print(f"  New events (No Kings)     : {new_nk}")
+        print(f"  New events (May Day)      : {new_md}")
         print(f"  Duplicates (3-day)        : {dup_g}")
         print(f"  Recurring  (3-day)        : {rec_g}")
 
         print("\nCollapsing recurring events to nearest timeslot …")
         general_rows  = collapse_recurring_timeslots(general_rows)
         no_kings_rows = collapse_recurring_timeslots(no_kings_rows)
-        print(f"  3-Day rows after collapse : {len(general_rows)}")
+        may_day_rows  = collapse_recurring_timeslots(may_day_rows)
+        print(f"  3-Day rows after collapse   : {len(general_rows)}")
         print(f"  No Kings rows after collapse: {len(no_kings_rows)}")
+        print(f"  May Day rows after collapse : {len(may_day_rows)}")
 
-        save_cache(general_rows, no_kings_rows, args.cache, first_seen_map)
+        save_cache(general_rows, no_kings_rows, may_day_rows, args.cache, first_seen_map)
 
     print("\nBuilding Excel workbook …")
-    build_excel(general_rows, no_kings_rows, args.output)
-    build_dashboard_json(general_rows, no_kings_rows)
+    build_excel(general_rows, no_kings_rows, may_day_rows, args.output)
+    build_dashboard_json(general_rows, no_kings_rows, may_day_rows)
     print("Done.\n")
 
 
