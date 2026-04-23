@@ -155,7 +155,7 @@
     display: flex; align-items: center; gap: 8px; margin-left: auto;
   }
 
-  #theme-toggle, #dl-excel {
+  #theme-toggle, #dl-excel, #dl-v2 {
     border: 1px solid rgba(255,255,255,.28);
     color: #fff; border-radius: 8px; padding: 5px 14px;
     font-size: 11px; font-weight: 500; font-family: inherit;
@@ -167,13 +167,13 @@
                 inset 0 -1px 0 rgba(0,0,0,.12);
     transition: all .14s;
   }
-  #theme-toggle:hover, #dl-excel:hover {
+  #theme-toggle:hover, #dl-excel:hover, #dl-v2:hover {
     background: rgba(255,255,255,.22);
     transform: translateY(-1px);
     box-shadow: 0 4px 8px rgba(0,0,0,.3),
                 inset 0 1px 0 rgba(255,255,255,.28);
   }
-  #theme-toggle:active, #dl-excel:active {
+  #theme-toggle:active, #dl-excel:active, #dl-v2:active {
     transform: translateY(0);
     background: rgba(0,0,0,.1);
     box-shadow: inset 0 2px 5px rgba(0,0,0,.3),
@@ -803,7 +803,7 @@
     header { padding: 10px 14px; gap: 8px; }
     header h1 { font-size: 14px; }
     .header-sub { display: none; }
-    #dl-excel  { display: none; }
+    #dl-excel, #dl-v2 { display: none; }
     #theme-toggle { font-size: 10px; padding: 5px 10px; }
 
     /* Tab bar */
@@ -926,6 +926,7 @@
     <div class="header-sub" style="opacity:.5">Updates at 7 AM, 3 PM &amp; 11 PM ET</div>
   </div>
   <div class="header-actions">
+    <a id="dl-v2" href="index.html">✦ New Dashboard</a>
     <a id="dl-excel" href="protest_tracker_latest.xlsx" download>⬇ Download Excel</a>
     <button id="theme-toggle" onclick="toggleTheme()">Dark Mode</button>
   </div>
