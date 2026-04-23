@@ -545,6 +545,7 @@
   }
   .close-src-gen { color: var(--accent);    background: rgba(59,130,246,.13); }
   .close-src-nk  { color: var(--accent-nk); background: rgba(139,92,246,.13); }
+  .close-src-md  { color: var(--bar-red);   background: rgba(239,68,68,.13);  }
   .sum-new-count {
     margin-left: auto; font-size: 11px; font-weight: 700; color: var(--flag-yes-color);
     background: var(--track-bg); border-radius: 10px; padding: 1px 7px;
@@ -937,6 +938,7 @@
   <div class="tab"        data-tab="timeline"   onclick="switchTab('timeline')">Timeline</div>
   <div class="tab"        data-tab="general"    onclick="switchTab('general')">3-Day Events</div>
   <div class="tab"        data-tab="no_kings"   onclick="switchTab('no_kings')">No Kings (30-Day)</div>
+  <div class="tab"        data-tab="may_day"    onclick="switchTab('may_day')">May Day 2026</div>
   <div class="tab"        data-tab="organizers" onclick="switchTab('organizers')">Organizers</div>
   <div class="tab"        data-tab="trends"     onclick="switchTab('trends')">Trends</div>
 </div>
@@ -1188,6 +1190,44 @@
   </div>
 </div>
 
+<div id="panel-may_day" class="tab-panel">
+  <div class="panel-card">
+    <div class="toolbar">
+      <input type="text" id="search-may_day" placeholder="🔍  Search events…" oninput="render('may_day')">
+      <select id="type-may_day" onchange="render('may_day')">
+        <option value="">All types</option>
+      </select>
+      <select id="prop-may_day" onchange="render('may_day')">
+        <option value="">All properties</option>
+      </select>
+      <button class="btn-export" onclick="exportCSV('may_day')">⬇ CSV</button>
+      <button class="btn-export" onclick="exportPrint()">🖨 Print</button>
+      <span class="badge badge-nk" id="count-may_day">0 events</span>
+    </div>
+    <div class="subtitle-bar" id="sub-may_day"></div>
+    <div class="table-wrap">
+      <table id="tbl-may_day" style="display:none">
+        <thead id="head-may_day"></thead>
+        <tbody id="body-may_day"></tbody>
+      </table>
+    </div>
+    <div class="legend">
+      <span class="legend-label">Distance</span>
+      <div class="legend-item"><div class="swatch band-red-nk"></div> &lt; 1 mile</div>
+      <div class="legend-item"><div class="swatch band-amber-nk"></div> 1 – 2 miles</div>
+      <div class="legend-item"><div class="swatch band-green-nk"></div> &gt; 2 miles</div>
+      <div class="legend-divider"></div>
+      <span class="legend-label">Flags</span>
+      <div class="legend-item"><span class="flag-pill flag-pill-new">NEW</span>&nbsp;Not in previous run</div>
+      <div class="legend-item"><span class="flag-pill flag-pill-dup">DUP</span>&nbsp;Near 2+ properties</div>
+      <div class="legend-item"><span class="flag-pill flag-pill-rec">RECUR</span>&nbsp;Multiple time slots</div>
+      <div class="legend-divider"></div>
+      <span class="legend-label">Source</span>
+      <div class="legend-item">Keyword match <em>or</em> listed on mobilize.us/mayday/ feed</div>
+    </div>
+  </div>
+</div>
+
 <script>
 const COLS = [
   { key: "property_name",  label: "Property Name",    cls: "prop" },
@@ -1208,9 +1248,14 @@ const FLAG_KEYS = new Set(["is_new","is_duplicate","is_recurring"]);
 let DATA = {};
 let NEW_EVENT_IDS = new Set(); // populated in init() from the 24h cache
 let NK_EVENT_IDS  = new Set(); // event_ids that belong to No Kings; excluded from general tab
-let sortState = { general: { col: "distance_mi", asc: true }, no_kings: { col: "distance_mi", asc: true } };
+let MD_EVENT_IDS  = new Set(); // event_ids that belong to May Day;  excluded from general tab
+let sortState = {
+  general:  { col: "distance_mi", asc: true },
+  no_kings: { col: "distance_mi", asc: true },
+  may_day:  { col: "distance_mi", asc: true },
+};
 let activeTab = "summary";
-const visibleRows = { general: [], no_kings: [] };
+const visibleRows = { general: [], no_kings: [], may_day: [] };
 
 /* ── Dark mode ──────────────────────────────────────────────────────── */
 function toggleTheme() {
@@ -1263,7 +1308,7 @@ function render(tab) {
   let rows = (DATA[tab]?.rows || []).filter(r => {
     if ((r.event_type || "").toLowerCase() === "community") return false;
     if ((r.event_type || "").toUpperCase() === "MEETING")   return false;
-    if (tab === "general" && NK_EVENT_IDS.has(r.event_id))  return false;
+    if (tab === "general" && (NK_EVENT_IDS.has(r.event_id) || MD_EVENT_IDS.has(r.event_id))) return false;
     if (typeF && r.event_type !== typeF) return false;
     if (propF && r.property_name !== propF) return false;
     if (search) {
@@ -1392,9 +1437,11 @@ function initMap() {
 
   const gen  = DATA.general?.rows  || [];
   const nk   = DATA.no_kings?.rows || [];
+  const md   = DATA.may_day?.rows  || [];
 
   const genLayer   = L.layerGroup();
   const nkLayer    = L.layerGroup();
+  const mdLayer    = L.layerGroup();
   const propLayer  = L.layerGroup();
   const propsSeen  = {};
   const bounds     = [];
@@ -1440,12 +1487,14 @@ function initMap() {
 
   addMarkers(gen, genLayer);
   addMarkers(nk, nkLayer);
+  addMarkers(md, mdLayer);
   /* Add property layer first so event dots render on top */
-  [propLayer, genLayer, nkLayer].forEach(l => l.addTo(MAP));
+  [propLayer, genLayer, nkLayer, mdLayer].forEach(l => l.addTo(MAP));
 
   L.control.layers(null, {
     "3-Day Events": genLayer,
     "No Kings Events": nkLayer,
+    "May Day 2026": mdLayer,
     "Properties": propLayer
   }, { collapsed: false }).addTo(MAP);
 
@@ -1475,6 +1524,7 @@ function buildTimeline() {
 
   const gen = noCommunity(DATA.general?.rows  || []);
   const nk  = noCommunity(DATA.no_kings?.rows || []);
+  const md  = noCommunity(DATA.may_day?.rows  || []);
 
   function parseDate(str) {
     const m = (str || "").match(/^([A-Za-z]+ \d+, \d+)/);
@@ -1482,16 +1532,13 @@ function buildTimeline() {
   }
 
   const dateMap = {};
-  gen.forEach(r => {
-    const d = parseDate(r.event_date); if (!d) return;
-    if (!dateMap[d]) dateMap[d] = { gen: [], nk: [] };
-    dateMap[d].gen.push(r);
-  });
-  nk.forEach(r => {
-    const d = parseDate(r.event_date); if (!d) return;
-    if (!dateMap[d]) dateMap[d] = { gen: [], nk: [] };
-    dateMap[d].nk.push(r);
-  });
+  function _bucket(d) {
+    if (!dateMap[d]) dateMap[d] = { gen: [], nk: [], md: [] };
+    return dateMap[d];
+  }
+  gen.forEach(r => { const d = parseDate(r.event_date); if (d) _bucket(d).gen.push(r); });
+  nk .forEach(r => { const d = parseDate(r.event_date); if (d) _bucket(d).nk .push(r); });
+  md .forEach(r => { const d = parseDate(r.event_date); if (d) _bucket(d).md .push(r); });
 
   const dates = Object.keys(dateMap).sort((a, b) => new Date(a) - new Date(b));
   el.innerHTML = "";
@@ -1510,11 +1557,11 @@ function buildTimeline() {
     hd.textContent = date.replace(/, \d{4}/, "");
     col.appendChild(hd);
 
-    function addChips(events, isNk) {
+    function addChips(events, variant) {
       if (!events.length) return;
       const lbl = document.createElement("div");
-      lbl.className = "tl-section-lbl" + (isNk ? " nk" : "");
-      lbl.textContent = isNk ? "No Kings" : "3-Day";
+      lbl.className = "tl-section-lbl" + (variant === "nk" ? " nk" : variant === "md" ? " md" : "");
+      lbl.textContent = variant === "nk" ? "No Kings" : variant === "md" ? "May Day" : "3-Day";
       col.appendChild(lbl);
       events.forEach(r => {
         const dist = parseFloat(r.distance_mi) || 0;
@@ -1528,8 +1575,9 @@ function buildTimeline() {
       });
     }
 
-    addChips(dateMap[date].gen, false);
-    addChips(dateMap[date].nk, true);
+    addChips(dateMap[date].gen, "gen");
+    addChips(dateMap[date].nk, "nk");
+    addChips(dateMap[date].md, "md");
     el.appendChild(col);
   });
 }
@@ -1652,7 +1700,8 @@ function renderTrends(runs) {
       labels,
       datasets: [
         { label: "3-Day Events",    data: runs.map(r => r.gen_total), borderColor: "#3b82f6", backgroundColor: "rgba(59,130,246,.12)", tension: 0.35, fill: true, pointRadius: 3 },
-        { label: "No Kings Events", data: runs.map(r => r.nk_total),  borderColor: "#8b5cf6", backgroundColor: "rgba(139,92,246,.12)", tension: 0.35, fill: true, pointRadius: 3 }
+        { label: "No Kings Events", data: runs.map(r => r.nk_total),  borderColor: "#8b5cf6", backgroundColor: "rgba(139,92,246,.12)", tension: 0.35, fill: true, pointRadius: 3 },
+        { label: "May Day 2026",    data: runs.map(r => r.md_total ?? 0), borderColor: "#ef4444", backgroundColor: "rgba(239,68,68,.12)", tension: 0.35, fill: true, pointRadius: 3 }
       ]
     },
     options: { responsive: true, plugins: { legend: { labels: { color: fg } } }, scales: { x: { ticks: { color: fg } }, y: { beginAtZero: true, ticks: { color: fg } } } }
@@ -1685,9 +1734,10 @@ function buildOrganizers() {
 
   const gen = noCommunity(DATA.general?.rows  || []);
   const nk  = DATA.no_kings?.rows || [];
+  const md  = DATA.may_day?.rows  || [];
   const orgMap = {};
 
-  [...gen, ...nk].forEach(r => {
+  [...gen, ...nk, ...md].forEach(r => {
     const org = (r.sponsor_name || "").trim() || "(No organizer listed)";
     if (!orgMap[org]) orgMap[org] = { count: 0, types: new Set() };
     orgMap[org].count++;
@@ -1790,9 +1840,10 @@ function noCommunity(rows) {
 function buildSummary() {
   const gen = noCommunity(DATA.general?.rows  || []);
   const nk  = noCommunity(DATA.no_kings?.rows || []);
+  const md  = noCommunity(DATA.may_day?.rows  || []);
 
   /* — KPIs — */
-  const newN = [...new Set([...gen, ...nk].filter(r => isNewEvent(r.event_id)).map(r => r.event_id))].length;
+  const newN = [...new Set([...gen, ...nk, ...md].filter(r => isNewEvent(r.event_id)).map(r => r.event_id))].length;
   const dupN = gen.filter(r => String(r.is_duplicate ?? "").toLowerCase() === "yes").length;
   const recN = gen.filter(r => String(r.is_recurring ?? "").toLowerCase() === "yes").length;
   animCount(document.getElementById("kpi-gen"),  gen.length);
@@ -1803,9 +1854,10 @@ function buildSummary() {
   const dot = document.getElementById("kpi-new-dot");
   if (dot) dot.style.display = newN > 0 ? "inline-block" : "none";
 
-  /* — Threat banner — */
+  /* — Threat banner (< 1 mile across all streams) — */
   const redN = gen.filter(r => parseFloat(r.distance_mi) < 1).length
-             + nk.filter(r =>  parseFloat(r.distance_mi) < 1).length;
+             + nk.filter(r =>  parseFloat(r.distance_mi) < 1).length
+             + md.filter(r =>  parseFloat(r.distance_mi) < 1).length;
   const [tLabel, tColor, tDesc] =
     redN >= 5 ? ["CRITICAL", "#dc2626", `${redN} events detected within 1 mile`]
   : redN >= 3 ? ["HIGH",     "#ea580c", `${redN} events detected within 1 mile`]
@@ -1824,7 +1876,7 @@ function buildSummary() {
   const proxEl = document.getElementById("sum-prox");
   if (proxEl) {
     proxEl.innerHTML = "";
-    [["3-Day General", gen], ["No Kings (30-Day)", nk]].forEach(([label, rows]) => {
+    [["3-Day General", gen], ["No Kings (30-Day)", nk], ["May Day 2026", md]].forEach(([label, rows]) => {
       const total = rows.length || 1;
       const bands = [
         ["< 1 mi", rows.filter(r => parseFloat(r.distance_mi) < 1).length,        "var(--bar-red)"],
@@ -1901,6 +1953,7 @@ function buildSummary() {
     });
     addRows(gen, "gen");
     addRows(nk,  "nk");
+    addRows(md,  "md");
     const closeRows = Object.values(bySlot).sort((a, b) => a._d - b._d);
 
     if (closeCountEl) {
@@ -1916,8 +1969,12 @@ function buildSummary() {
       closeRows.forEach(r => {
         const row   = document.createElement("div"); row.className = "new-ev-row";
         const src   = document.createElement("span");
-        src.className = "close-src " + (r._src === "nk" ? "close-src-nk" : "close-src-gen");
-        src.textContent = r._src === "nk" ? "NK" : "3-Day";
+        src.className = "close-src " + (r._src === "nk" ? "close-src-nk"
+                                      : r._src === "md" ? "close-src-md"
+                                      : "close-src-gen");
+        src.textContent = r._src === "nk" ? "NK"
+                        : r._src === "md" ? "MD"
+                        : "3-Day";
         const badge = document.createElement("span"); badge.className = "new-ev-badge";
         badge.textContent = r.event_type || "Event";
         const title = document.createElement("span"); title.className = "new-ev-title";
@@ -1941,12 +1998,14 @@ function buildSummary() {
   const newListEl  = document.getElementById("sum-new-list");
   const newCountEl = document.getElementById("sum-new-count");
   if (newListEl) {
-    // All gen rows new in last 24h, plus nk-only rows not already covered by gen
-    const genNewIds = new Set(gen.filter(r => isNewEvent(r.event_id)).map(r => r.event_id));
-    const newEvents = [
-      ...gen.filter(r => isNewEvent(r.event_id)),
-      ...nk.filter(r => isNewEvent(r.event_id) && !genNewIds.has(r.event_id)),
-    ];
+    // Union of gen + nk + md new rows, deduped by event_id (keep first-seen occurrence)
+    const newEvents = [];
+    const seenIds = new Set();
+    for (const r of [...gen, ...nk, ...md]) {
+      if (!isNewEvent(r.event_id) || seenIds.has(r.event_id)) continue;
+      seenIds.add(r.event_id);
+      newEvents.push(r);
+    }
     newEvents.sort((a, b) => parseFloat(a.distance_mi) - parseFloat(b.distance_mi));
     if (newCountEl) {
       newCountEl.textContent = newEvents.length;
@@ -1999,7 +2058,11 @@ async function init() {
   try {
     DATA = json;
     NK_EVENT_IDS  = new Set((json.no_kings?.rows || []).map(r => r.event_id).filter(Boolean));
-    NEW_EVENT_IDS = buildNewEventIds(json.general?.rows || [], json.no_kings?.rows || []);
+    MD_EVENT_IDS  = new Set((json.may_day?.rows  || []).map(r => r.event_id).filter(Boolean));
+    NEW_EVENT_IDS = buildNewEventIds(
+      [...(json.general?.rows || []), ...(json.may_day?.rows || [])],
+      json.no_kings?.rows || []
+    );
 
     document.getElementById("loading").style.display = "none";
     document.getElementById("gen-time").textContent = "Generated: " + json.generated;
@@ -2007,8 +2070,9 @@ async function init() {
       "Data source: Mobilize.us  •  Generated: " + json.generated;
     document.getElementById("sub-general").textContent  = json.general?.subtitle  || "";
     document.getElementById("sub-no_kings").textContent = json.no_kings?.subtitle || "";
+    document.getElementById("sub-may_day").textContent  = json.may_day?.subtitle  || "";
 
-    ["general","no_kings"].forEach(tab => {
+    ["general","no_kings","may_day"].forEach(tab => {
       buildHeader(tab);
       populateFilters(tab);
       document.getElementById(`tbl-${tab}`).style.display = "";
