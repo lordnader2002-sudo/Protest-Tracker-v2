@@ -314,7 +314,29 @@ def expand_event(event: dict, prop: dict, stats: dict | None = None) -> list[dic
         .astimezone(_EASTERN).strftime("%b %d, %Y")
         if created_unix else ""
     )
-    sponsor_name = ((event.get("sponsor") or {}).get("name") or "").strip()
+    sponsor = event.get("sponsor") or {}
+    sponsor_name = (sponsor.get("name") or "").strip()
+    sponsor_website = (sponsor.get("website_url") or sponsor.get("org_website") or "").strip()
+    contact = event.get("contact") or {}
+    sponsor_email = (contact.get("email_address") or sponsor.get("email") or "").strip()
+    sponsor_phone = (contact.get("phone_number") or sponsor.get("phone") or "").strip()
+    featured_image_url = (event.get("featured_image_url") or "").strip()
+    description = (event.get("description") or event.get("summary") or "").strip()
+    tags = [(t.get("name") or "").strip() for t in (event.get("tags") or []) if (t.get("name") or "").strip()]
+    is_virtual = bool(event.get("is_virtual"))
+    accessibility_notes = (event.get("accessibility_notes") or "").strip()
+
+    all_timeslots = []
+    for ts in event.get("timeslots") or []:
+        s = ts.get("start_date")
+        e = ts.get("end_date")
+        if not s:
+            continue
+        all_timeslots.append({
+            "start_iso": datetime.fromtimestamp(s, tz=timezone.utc).isoformat(),
+            "end_iso":   datetime.fromtimestamp(e, tz=timezone.utc).isoformat() if e else "",
+        })
+
     e_lat = round(float(elat), 6) if elat is not None else ""
     e_lon = round(float(elon), 6) if elon is not None else ""
     rows = []
@@ -337,6 +359,15 @@ def expand_event(event: dict, prop: dict, stats: dict | None = None) -> list[dic
             "event_url":      browser_url,
             "first_seen":     first_seen,
             "sponsor_name":   sponsor_name,
+            "sponsor_email":  sponsor_email,
+            "sponsor_phone":  sponsor_phone,
+            "sponsor_website": sponsor_website,
+            "featured_image_url": featured_image_url,
+            "description":    description,
+            "tags":           tags,
+            "is_virtual":     is_virtual,
+            "accessibility_notes": accessibility_notes,
+            "all_timeslots":  all_timeslots,
             "event_lat":      e_lat,
             "event_lon":      e_lon,
             "prop_lat":       round(float(prop["lat"]), 6),
@@ -1143,7 +1174,10 @@ def build_dashboard_json(general_rows: list[dict], no_kings_rows: list[dict],
     end_30d = (now + timedelta(days=DAYS_NO_KINGS)).strftime("%B %d, %Y")
     end_md  = MAY_DAY_END_DATE.strftime("%B %d, %Y")
 
-    _DASHBOARD_EXTRA = ["event_lat", "event_lon", "prop_lat", "prop_lon", "sponsor_name",
+    _DASHBOARD_EXTRA = ["event_lat", "event_lon", "prop_lat", "prop_lon",
+                        "sponsor_name", "sponsor_email", "sponsor_phone", "sponsor_website",
+                        "featured_image_url", "description", "tags", "is_virtual",
+                        "accessibility_notes", "all_timeslots",
                         "first_seen_iso"]
 
     def _clean(rows):

@@ -427,12 +427,133 @@ const Dashboard=({t,stats,data})=>{
   </div>;
 };
 
+/* ═══ EVENT MODAL ══════════════════════════════════════════════ */
+const EventModal=({t,ev,onClose})=>{
+  useEffect(()=>{
+    if(!ev) return;
+    const onKey=e=>{if(e.key==='Escape') onClose();};
+    window.addEventListener('keydown',onKey);
+    const prev=document.body.style.overflow;
+    document.body.style.overflow='hidden';
+    return ()=>{window.removeEventListener('keydown',onKey);document.body.style.overflow=prev;};
+  },[ev,onClose]);
+  if(!ev) return null;
+  const dist=parseFloat(ev.distance_mi)||99;
+  const distColor=dist<1?t.critical:dist<2?t.high:t.low;
+  const fmtTs=iso=>{try{return new Date(iso).toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short'});}catch{return iso;}};
+  const copyUrl=()=>{if(!ev.event_url)return;navigator.clipboard?.writeText(ev.event_url);};
+  const slots=Array.isArray(ev.all_timeslots)?ev.all_timeslots:[];
+  const tags=Array.isArray(ev.tags)?ev.tags:[];
+
+  return <div onClick={onClose} style={{
+    position:'fixed',inset:0,background:'rgba(0,0,0,.62)',backdropFilter:'blur(3px)',
+    display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000,padding:24}}>
+    <div onClick={e=>e.stopPropagation()} style={{
+      background:t.surface,border:`1px solid ${t.border}`,borderRadius:6,
+      maxWidth:720,width:'100%',maxHeight:'90vh',overflowY:'auto',
+      boxShadow:'0 20px 60px rgba(0,0,0,.5)',position:'relative'}}>
+      {/* Hero */}
+      {ev.featured_image_url&&<div style={{
+        height:180,backgroundImage:`url(${ev.featured_image_url})`,
+        backgroundSize:'cover',backgroundPosition:'center',
+        borderBottom:`1px solid ${t.border}`,position:'relative'}}>
+        <div style={{position:'absolute',inset:0,background:`linear-gradient(to bottom, transparent 40%, ${t.surface})`,pointerEvents:'none'}}/>
+      </div>}
+      {/* Header */}
+      <div style={{padding:'18px 22px 14px',borderBottom:`1px solid ${t.border}`,position:'relative'}}>
+        <button onClick={onClose} title="Close (Esc)" style={{
+          position:'absolute',top:12,right:12,background:'transparent',
+          border:`1px solid ${t.border}`,color:t.textSub,width:28,height:28,
+          borderRadius:4,cursor:'pointer',fontSize:16,lineHeight:1,display:'flex',
+          alignItems:'center',justifyContent:'center'}}>×</button>
+        <div style={{display:'flex',gap:8,alignItems:'center',marginBottom:6,flexWrap:'wrap'}}>
+          <span style={{...mono,fontSize:9,fontWeight:700,padding:'3px 8px',borderRadius:2,
+            background:`${t.accent}18`,color:t.accent,border:`1px solid ${t.accent}35`,textTransform:'uppercase',letterSpacing:'.06em'}}>{ev.event_type||'Event'}</span>
+          <span style={{...mono,fontSize:10,fontWeight:700,padding:'3px 8px',borderRadius:2,
+            background:`${distColor}18`,color:distColor,border:`1px solid ${distColor}35`}}>{dist.toFixed(2)} mi</span>
+          {ev.is_virtual&&<span style={{...mono,fontSize:9,fontWeight:700,padding:'3px 8px',borderRadius:2,
+            background:`${t.textMuted}18`,color:t.textSub,border:`1px solid ${t.border}`,textTransform:'uppercase',letterSpacing:'.06em'}}>Virtual</span>}
+        </div>
+        <h2 style={{fontSize:18,fontWeight:700,color:t.text,marginRight:32,lineHeight:1.3}}>{ev.event_title||'Untitled'}</h2>
+        <p style={{fontSize:11,color:t.textMuted,marginTop:4}}>Near <span style={{color:t.text,fontWeight:600}}>{ev.property_name}</span></p>
+      </div>
+      {/* Meta grid */}
+      <div style={{padding:'14px 22px',borderBottom:`1px solid ${t.border}`,display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+        <div>
+          <div style={{...mono,fontSize:9,fontWeight:700,color:t.textMuted,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:3}}>Date / Time</div>
+          <div style={{fontSize:12,color:t.text}}>{ev.event_date||'—'}</div>
+        </div>
+        <div>
+          <div style={{...mono,fontSize:9,fontWeight:700,color:t.textMuted,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:3}}>Location</div>
+          <div style={{fontSize:12,color:t.text,wordBreak:'break-word'}}>{ev.event_location||'—'}</div>
+        </div>
+      </div>
+      {/* Sponsor */}
+      {(ev.sponsor_name||ev.sponsor_email||ev.sponsor_phone||ev.sponsor_website)&&<div style={{padding:'14px 22px',borderBottom:`1px solid ${t.border}`}}>
+        <div style={{...mono,fontSize:9,fontWeight:700,color:t.textMuted,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:6}}>Sponsor / Organizer</div>
+        <div style={{fontSize:13,color:t.text,fontWeight:600,marginBottom:4}}>{ev.sponsor_name||'Unknown'}</div>
+        <div style={{display:'flex',flexWrap:'wrap',gap:12,fontSize:11}}>
+          {ev.sponsor_email&&<a href={`mailto:${ev.sponsor_email}`} style={{color:t.accent,textDecoration:'none'}}>✉ {ev.sponsor_email}</a>}
+          {ev.sponsor_phone&&<a href={`tel:${ev.sponsor_phone}`} style={{color:t.accent,textDecoration:'none'}}>☎ {ev.sponsor_phone}</a>}
+          {ev.sponsor_website&&<a href={ev.sponsor_website} target="_blank" rel="noopener" style={{color:t.accent,textDecoration:'none'}}>🔗 Website</a>}
+        </div>
+      </div>}
+      {/* Description */}
+      {ev.description&&<div style={{padding:'14px 22px',borderBottom:`1px solid ${t.border}`}}>
+        <div style={{...mono,fontSize:9,fontWeight:700,color:t.textMuted,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:6}}>Description</div>
+        <div style={{fontSize:12,color:t.text,lineHeight:1.55,whiteSpace:'pre-wrap',maxHeight:240,overflowY:'auto'}}>{ev.description}</div>
+      </div>}
+      {/* All timeslots */}
+      {slots.length>1&&<div style={{padding:'14px 22px',borderBottom:`1px solid ${t.border}`}}>
+        <div style={{...mono,fontSize:9,fontWeight:700,color:t.textMuted,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:6}}>All Timeslots ({slots.length})</div>
+        <div style={{maxHeight:160,overflowY:'auto'}}>
+          {slots.map((ts,i)=><div key={i} style={{...mono,fontSize:11,color:t.text,padding:'3px 0',
+            borderBottom:i<slots.length-1?`1px solid ${t.border}`:'none'}}>{fmtTs(ts.start_iso)}</div>)}
+        </div>
+      </div>}
+      {/* Tags */}
+      {tags.length>0&&<div style={{padding:'14px 22px',borderBottom:`1px solid ${t.border}`}}>
+        <div style={{...mono,fontSize:9,fontWeight:700,color:t.textMuted,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:6}}>Tags</div>
+        <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
+          {tags.map((tag,i)=><span key={i} style={{...mono,fontSize:10,padding:'3px 8px',borderRadius:2,
+            background:t.border,color:t.textSub,border:`1px solid ${t.borderStrong||t.border}`}}>{tag}</span>)}
+        </div>
+      </div>}
+      {/* Accessibility */}
+      {ev.accessibility_notes&&<div style={{padding:'14px 22px',borderBottom:`1px solid ${t.border}`}}>
+        <div style={{...mono,fontSize:9,fontWeight:700,color:t.textMuted,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:6}}>Accessibility</div>
+        <div style={{fontSize:11,color:t.textSub,lineHeight:1.5}}>{ev.accessibility_notes}</div>
+      </div>}
+      {/* Flags */}
+      {((ev.is_new||'').toLowerCase()==='yes'||(ev.is_duplicate||'').toLowerCase()==='yes'||(ev.is_recurring||'').toLowerCase()==='yes')&&
+      <div style={{padding:'14px 22px',borderBottom:`1px solid ${t.border}`,display:'flex',gap:8,flexWrap:'wrap'}}>
+        {(ev.is_new||'').toLowerCase()==='yes'&&<span style={{...mono,fontSize:9,fontWeight:700,padding:'3px 8px',borderRadius:2,background:`${t.low}18`,color:t.low,border:`1px solid ${t.low}35`,textTransform:'uppercase',letterSpacing:'.06em'}}>New · &lt;24h</span>}
+        {(ev.is_duplicate||'').toLowerCase()==='yes'&&<span style={{...mono,fontSize:9,fontWeight:700,padding:'3px 8px',borderRadius:2,background:`${t.high}18`,color:t.high,border:`1px solid ${t.high}35`,textTransform:'uppercase',letterSpacing:'.06em'}}>Near 2+ Properties</span>}
+        {(ev.is_recurring||'').toLowerCase()==='yes'&&<span style={{...mono,fontSize:9,fontWeight:700,padding:'3px 8px',borderRadius:2,background:`${t.accent}18`,color:t.accent,border:`1px solid ${t.accent}35`,textTransform:'uppercase',letterSpacing:'.06em'}}>Recurring</span>}
+      </div>}
+      {/* Actions */}
+      <div style={{padding:'14px 22px',display:'flex',gap:8,justifyContent:'flex-end'}}>
+        <button onClick={copyUrl} disabled={!ev.event_url} style={{
+          background:'transparent',border:`1px solid ${t.border}`,color:t.textSub,
+          padding:'7px 14px',borderRadius:4,cursor:ev.event_url?'pointer':'not-allowed',
+          fontSize:11,...mono,letterSpacing:'.06em',textTransform:'uppercase',
+          opacity:ev.event_url?1:.5}}>Copy URL</button>
+        {ev.event_url&&<a href={ev.event_url} target="_blank" rel="noopener" style={{
+          background:t.accent,border:`1px solid ${t.accent}`,color:'#fff',
+          padding:'7px 14px',borderRadius:4,textDecoration:'none',
+          fontSize:11,...mono,letterSpacing:'.06em',textTransform:'uppercase'}}>Open on Mobilize →</a>}
+      </div>
+    </div>
+  </div>;
+};
+
 /* ═══ EVENTS TABLE ═════════════════════════════════════════════ */
 const EventsTable=({t,rows,type,subtitle})=>{
   const [sortCol,setSortCol]=useState('distance_mi');
   const [sortDir,setSortDir]=useState('asc');
   const [search,setSearch]=useState('');
   const [hovered,setHovered]=useState(null);
+  const [selected,setSelected]=useState(null);
 
   const data=useMemo(()=>{
     return (rows||[])
@@ -503,7 +624,8 @@ const EventsTable=({t,rows,type,subtitle})=>{
               const isNew=(ev.is_new||'').toLowerCase()==='yes';
               return <tr key={i}
                 onMouseEnter={()=>setHovered(i)} onMouseLeave={()=>setHovered(null)}
-                style={{background:hovered===i?`${t.accent}0a`:bandBg,transition:'background .1s',fontWeight:isNew?600:400}}>
+                onClick={()=>setSelected(ev)}
+                style={{background:hovered===i?`${t.accent}0a`:bandBg,transition:'background .1s',fontWeight:isNew?600:400,cursor:'pointer'}}>
                 <td style={{...tdBase,fontWeight:500,maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ev.property_name}</td>
                 <td style={{...tdBase,maxWidth:220}}>
                   <div style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ev.event_title}</div>
@@ -525,10 +647,11 @@ const EventsTable=({t,rows,type,subtitle})=>{
         </table>
       </div>
       <div style={{padding:'8px 14px',borderTop:`1px solid ${t.border}`,display:'flex',justifyContent:'space-between',background:`${t.border}33`}}>
-        <span style={{...mono,fontSize:10,color:t.textMuted}}>{data.length} records · sorted by {sortCol}</span>
+        <span style={{...mono,fontSize:10,color:t.textMuted}}>{data.length} records · sorted by {sortCol} · click any row for details</span>
         <span style={{...mono,fontSize:10,color:t.textMuted}}>Distance bands: <span style={{color:t.critical}}>●</span> &lt;1mi <span style={{color:t.high}}>●</span> 1-2mi <span style={{color:t.low}}>●</span> &gt;2mi</span>
       </div>
     </div>
+    <EventModal t={t} ev={selected} onClose={()=>setSelected(null)}/>
   </div>;
 };
 
