@@ -256,12 +256,20 @@ const Sidebar=({t,view,setView,generated})=><aside style={{
 const LABELS={dashboard:'Summary Dashboard',events3:'3-Day Events',nogo:'No Kings Events (30 Days Out)',
   mayday:'May Day Events (Until May 2)',map:'Event Map',organizers:'Organizers',trends:'Trends'};
 
-const TopBar=({t,view,generated,darkMode,handleDark})=><div style={{
-  height:46,background:t.surface,borderBottom:`1px solid ${t.border}`,
-  display:'flex',alignItems:'center',padding:'0 22px',gap:12,flexShrink:0}}>
-  <span style={{fontSize:14,fontWeight:600,color:t.text}}>{LABELS[view]||view}</span>
-  <span style={{width:1,height:14,background:t.border}}/>
-  <span style={{...mono,fontSize:10,color:t.textMuted}}>{generated||''}</span>
+const TopBar=({t,view,generated,darkMode,handleDark,subtitle,count})=>{
+  const hasCount=count!=null;
+  return <div style={{
+    height:hasCount||subtitle?52:46,background:t.surface,borderBottom:`1px solid ${t.border}`,
+    display:'flex',alignItems:'center',padding:'0 22px',gap:12,flexShrink:0}}>
+  <div style={{display:'flex',flexDirection:'column',justifyContent:'center'}}>
+    <span style={{fontSize:14,fontWeight:600,color:t.text,lineHeight:1.2}}>{LABELS[view]||view}</span>
+    {(subtitle||hasCount)&&<span style={{...mono,fontSize:10,color:t.textMuted,marginTop:2}}>
+      {hasCount&&<span style={{color:t.accent,fontWeight:700,marginRight:4}}>{count}</span>}
+      {subtitle}
+    </span>}
+  </div>
+  {!subtitle&&<><span style={{width:1,height:14,background:t.border}}/>
+  <span style={{...mono,fontSize:10,color:t.textMuted}}>{generated||''}</span></>}
   <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:10}}>
     <div style={{display:'flex',alignItems:'center',gap:5}}>
       <div style={{width:7,height:7,borderRadius:'50%',background:'#22c55e',boxShadow:'0 0 6px #22c55e66'}}/>
@@ -280,6 +288,7 @@ const TopBar=({t,view,generated,darkMode,handleDark})=><div style={{
     </button>
   </div>
 </div>;
+};
 
 /* ═══ DASHBOARD ════════════════════════════════════════════════ */
 const StatCard=({t,label,value,sub,spark,color})=><div style={{
@@ -465,18 +474,12 @@ const EventsTable=({t,rows,type,subtitle})=>{
   };
 
   return <div style={{padding:22}}>
-    <div style={{display:'flex',alignItems:'flex-start',gap:12,marginBottom:16}}>
-      <div>
-        <h2 style={{fontSize:17,fontWeight:700,color:t.text}}>{type==='nogo'?'No Kings Events (30 Days Out)':type==='mayday'?'May Day Events (Until May 2, 2026)':'3-Day Events'}</h2>
-        <p style={{fontSize:11,color:t.textMuted,marginTop:2}}>{data.length} events · {subtitle}</p>
-      </div>
-      <div style={{marginLeft:'auto',display:'flex',gap:8,alignItems:'center'}}>
-        <div style={{display:'flex',alignItems:'center',gap:8,background:t.surface,border:`1px solid ${t.border}`,
-          borderRadius:4,padding:'6px 12px'}}>
-          <Icon id="search" size={13} color={t.textMuted}/>
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search events, properties…"
-            style={{border:'none',outline:'none',fontSize:12,background:'transparent',color:t.text,width:200}}/>
-        </div>
+    <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:14}}>
+      <div style={{display:'flex',alignItems:'center',gap:8,background:t.surface,border:`1px solid ${t.border}`,
+        borderRadius:4,padding:'6px 12px'}}>
+        <Icon id="search" size={13} color={t.textMuted}/>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search events, properties…"
+          style={{border:'none',outline:'none',fontSize:12,background:'transparent',color:t.text,width:220}}/>
       </div>
     </div>
     <div style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:4,overflow:'hidden'}}>
@@ -496,7 +499,7 @@ const EventsTable=({t,rows,type,subtitle})=>{
           <tbody>
             {data.map((ev,i)=>{
               const dist=parseFloat(ev.distance_mi)||99;
-              const bandBg=dist<1?`${t.critical}08`:dist<2?`${t.high}06`:'transparent';
+              const bandBg=dist<1?`${t.critical}28`:dist<2?`${t.high}1a`:'transparent';
               const isNew=(ev.is_new||'').toLowerCase()==='yes';
               return <tr key={i}
                 onMouseEnter={()=>setHovered(i)} onMouseLeave={()=>setHovered(null)}
@@ -702,7 +705,11 @@ const App=()=>{
   return <div style={{display:'flex',height:'100vh',overflow:'hidden',background:t.bg}}>
     <Sidebar t={t} view={view} setView={handleView} generated={stats?.generated}/>
     <div style={{flex:1,display:'flex',flexDirection:'column',minWidth:0,overflow:'hidden'}}>
-      <TopBar t={t} view={view} generated={stats?.generated} darkMode={darkMode} handleDark={handleDark}/>
+      {(()=>{
+        const sub=view==='events3'?stats?.genSubtitle:view==='nogo'?stats?.nkSubtitle:view==='mayday'?stats?.mdSubtitle:'';
+        const count=view==='events3'?(data?.general?.rows||[]).length:view==='nogo'?(data?.no_kings?.rows||[]).length:view==='mayday'?(data?.may_day?.rows||[]).length:null;
+        return <TopBar t={t} view={view} generated={stats?.generated} darkMode={darkMode} handleDark={handleDark} subtitle={sub} count={count}/>;
+      })()}
       <div style={{flex:1,overflowY:'auto',position:'relative'}}>
         {view==='dashboard'&&<Dashboard t={t} stats={stats} data={data}/>}
         {view==='events3'&&<EventsTable t={t} rows={data?.general?.rows} type="3day" subtitle={stats?.genSubtitle||''}/>}
