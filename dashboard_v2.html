@@ -267,20 +267,15 @@ const TopBar=({t,view,generated,darkMode,handleDark,subtitle,count})=>{
   {!subtitle&&<><span style={{width:1,height:14,background:t.border}}/>
   <span style={{...mono,fontSize:10,color:t.textMuted}}>{generated||''}</span></>}
   <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:10}}>
-    <div style={{display:'flex',alignItems:'center',gap:5}}>
-      <div style={{width:7,height:7,borderRadius:'50%',background:'#22c55e',boxShadow:'0 0 6px #22c55e66'}}/>
-      <span style={{...mono,fontSize:10,color:t.textMuted}}>LIVE FEED</span>
-    </div>
-    <span style={{width:1,height:14,background:t.border}}/>
     <button onClick={handleDark} title={darkMode?'Switch to light mode':'Switch to dark mode'} style={{
-      background:'transparent',border:`1px solid ${t.border}`,borderRadius:4,
-      padding:'5px 10px',cursor:'pointer',color:t.textSub,
-      display:'flex',alignItems:'center',gap:6,fontSize:10,letterSpacing:'.06em',
-      ...mono,textTransform:'uppercase',transition:'all .12s'}}
-      onMouseEnter={e=>{e.currentTarget.style.color=t.text;e.currentTarget.style.borderColor=t.borderStrong;}}
-      onMouseLeave={e=>{e.currentTarget.style.color=t.textSub;e.currentTarget.style.borderColor=t.border;}}>
-      <Icon id={darkMode?'sun':'moon'} size={12}/>
-      <span>{darkMode?'Light':'Dark'}</span>
+      background:darkMode?`${t.accent}1f`:`${t.accent}14`,border:`1.5px solid ${t.accent}`,borderRadius:6,
+      padding:'8px 16px',cursor:'pointer',color:t.accent,
+      display:'flex',alignItems:'center',gap:8,fontSize:12,fontWeight:700,letterSpacing:'.08em',
+      ...mono,textTransform:'uppercase',transition:'all .15s',boxShadow:`0 0 0 0 ${t.accent}00`}}
+      onMouseEnter={e=>{e.currentTarget.style.background=`${t.accent}28`;e.currentTarget.style.boxShadow=`0 0 0 3px ${t.accent}22`;}}
+      onMouseLeave={e=>{e.currentTarget.style.background=darkMode?`${t.accent}1f`:`${t.accent}14`;e.currentTarget.style.boxShadow=`0 0 0 0 ${t.accent}00`;}}>
+      <Icon id={darkMode?'sun':'moon'} size={16}/>
+      <span>{darkMode?'Light Mode':'Dark Mode'}</span>
     </button>
   </div>
 </div>;
@@ -347,7 +342,7 @@ const Dashboard=({t,stats,data})=>{
         ↓ Download Excel
       </a>
       <button onClick={()=>buildCSV(data)} style={{...btnStyle(t,'#16a34a'),border:`1px solid #16a34a`}}>
-        ↓ Export CSV · Power BI
+        ↓ Export CSV
       </button>
     </div>
     {/* Stats */}
