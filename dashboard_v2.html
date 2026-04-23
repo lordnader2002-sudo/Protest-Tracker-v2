@@ -245,9 +245,8 @@ const Sidebar=({t,view,setView,generated})=><aside style={{
       <Icon id="switchDash" size={13}/>
       <span>Switch to Classic Dashboard</span>
     </a>
-    <div style={{...mono,fontSize:9,color:`${t.sidebarText}88`,letterSpacing:'.06em',lineHeight:1.8}}>
-      ANALYST WORKSPACE<br/>
-      <span style={{color:`${t.sidebarText}55`}}>v2 · dashboard_v2.html</span>
+    <div style={{...mono,fontSize:9,color:`${t.sidebarText}55`,letterSpacing:'.06em',lineHeight:1.8}}>
+      v2 · dashboard_v2.html
     </div>
   </div>
 </aside>;
@@ -487,6 +486,10 @@ const EventModal=({t,ev,onClose})=>{
           <div style={{...mono,fontSize:9,fontWeight:700,color:t.textMuted,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:3}}>Location</div>
           <div style={{fontSize:12,color:t.text,wordBreak:'break-word'}}>{ev.event_location||'—'}</div>
         </div>
+        {(ev.rsvp_count>0)&&<div>
+          <div style={{...mono,fontSize:9,fontWeight:700,color:t.textMuted,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:3}}>RSVPs</div>
+          <div style={{...mono,fontSize:16,fontWeight:700,color:dist<1?t.critical:dist<2?t.high:t.low}}>{ev.rsvp_count.toLocaleString()}</div>
+        </div>}
       </div>
       {/* Sponsor */}
       {(ev.sponsor_name||ev.sponsor_email||ev.sponsor_phone||ev.sponsor_website)&&<div style={{padding:'14px 22px',borderBottom:`1px solid ${t.border}`}}>
@@ -507,8 +510,11 @@ const EventModal=({t,ev,onClose})=>{
       {slots.length>1&&<div style={{padding:'14px 22px',borderBottom:`1px solid ${t.border}`}}>
         <div style={{...mono,fontSize:9,fontWeight:700,color:t.textMuted,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:6}}>All Timeslots ({slots.length})</div>
         <div style={{maxHeight:160,overflowY:'auto'}}>
-          {slots.map((ts,i)=><div key={i} style={{...mono,fontSize:11,color:t.text,padding:'3px 0',
-            borderBottom:i<slots.length-1?`1px solid ${t.border}`:'none'}}>{fmtTs(ts.start_iso)}</div>)}
+          {slots.map((ts,i)=><div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center',
+            padding:'4px 0',borderBottom:i<slots.length-1?`1px solid ${t.border}`:'none'}}>
+            <span style={{...mono,fontSize:11,color:t.text}}>{fmtTs(ts.start_iso)}</span>
+            {ts.rsvps>0&&<span style={{...mono,fontSize:10,fontWeight:700,color:t.textSub}}>{ts.rsvps.toLocaleString()} RSVPs</span>}
+          </div>)}
         </div>
       </div>}
       {/* Tags */}
@@ -788,6 +794,8 @@ function applyDark(base){
   return {...base,
     bg:'#0d1117', surface:'#161b22', border:'#30363d', borderStrong:'#484f58',
     text:'#e6edf3', textSub:'#8b949e', textMuted:'#6e7681',
+    critical:'#f87171', high:'#fb923c', medium:'#fbbf24', low:'#4ade80',
+    accent:'#60a5fa', accentBg:'rgba(96,165,250,.12)',
   };
 }
 
