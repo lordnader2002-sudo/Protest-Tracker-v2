@@ -1179,7 +1179,7 @@ def build_dashboard_json(general_rows: list[dict], no_kings_rows: list[dict],
     end_30d = (now + timedelta(days=DAYS_NO_KINGS)).strftime("%B %d, %Y")
     end_md  = MAY_DAY_END_DATE.strftime("%B %d, %Y")
 
-    _DASHBOARD_EXTRA = ["event_lat", "event_lon", "prop_lat", "prop_lon",
+    _DASHBOARD_EXTRA = ["event_id", "event_lat", "event_lon", "prop_lat", "prop_lon",
                         "sponsor_name", "sponsor_email", "sponsor_phone", "sponsor_website",
                         "featured_image_url", "description", "tags", "is_virtual",
                         "accessibility_notes", "all_timeslots", "rsvp_count",
