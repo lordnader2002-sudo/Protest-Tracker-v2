@@ -119,15 +119,38 @@ function relTime(iso){
   return new Date(t).toLocaleDateString('en-US',{month:'short',day:'numeric'});
 }
 const NEW_CUTOFF_MS=Date.now()-7*24*3600*1000;
+function computeBootstrapTs(allRows){
+  // If a large cohort of events share a single first_seen_iso timestamp
+  // (within 60s of each other), that timestamp is a bootstrap/reseed
+  // moment — not genuine discoveries. Events at that timestamp should
+  // NOT be counted as "new".
+  const buckets={};
+  for(const r of allRows){
+    const t=parseIso(r.first_seen_iso);
+    if(!t) continue;
+    const bucket=Math.floor(t/60000); // 1-minute buckets
+    buckets[bucket]=(buckets[bucket]||0)+1;
+  }
+  const entries=Object.entries(buckets);
+  if(!entries.length) return null;
+  const [topBucket,topCount]=entries.reduce((a,b)=>a[1]>=b[1]?a:b);
+  // Require ≥60% of events in one minute to call it a bootstrap cohort
+  if(topCount/allRows.length>=0.6) return parseInt(topBucket)*60000;
+  return null;
+}
+let BOOTSTRAP_TS=null;
 function isNewRow(r){
   const t=parseIso(r.first_seen_iso);
-  return t>0 && t>NEW_CUTOFF_MS;
+  if(t<=0 || t<=NEW_CUTOFF_MS) return false;
+  if(BOOTSTRAP_TS && Math.abs(t-BOOTSTRAP_TS)<60000) return false;
+  return true;
 }
 
 function deriveStats(data){
   if(!data) return null;
   const gen=data.general?.rows||[], nk=data.no_kings?.rows||[], md=data.may_day?.rows||[];
   const all=[...gen,...nk,...md];
+  BOOTSTRAP_TS=computeBootstrapTs(all);
   const newCount=all.filter(isNewRow).length;
   const dupCount=all.filter(r=>(r.is_duplicate||'').toLowerCase()==='yes').length;
   const recCount=all.filter(r=>(r.is_recurring||'').toLowerCase()==='yes').length;
