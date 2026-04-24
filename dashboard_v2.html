@@ -118,8 +118,10 @@ function relTime(iso){
   if(d<7)  return `${d}d ago`;
   return new Date(t).toLocaleDateString('en-US',{month:'short',day:'numeric'});
 }
+const NEW_CUTOFF_MS=Date.now()-7*24*3600*1000;
 function isNewRow(r){
-  return (r.is_new||'').toLowerCase()==='yes';
+  const t=parseIso(r.first_seen_iso);
+  return t>0 && t>NEW_CUTOFF_MS;
 }
 
 function deriveStats(data){
@@ -357,7 +359,7 @@ const Dashboard=({t,stats,data})=>{
       <StatCard t={t} label="3-Day Events" value={stats.general} sub="72-hour window" color={t.accent}/>
       <StatCard t={t} label="No Kings" value={stats.noKings} sub="30-day window" color="#7c3aed"/>
       <StatCard t={t} label="May Day 2026" value={stats.mayDay} sub="Until May 2" color="#ef4444"/>
-      <StatCard t={t} label="New This Run" value={stats.newCount} sub="First seen this pull" color={t.low}/>
+      <StatCard t={t} label="New (7 Days)" value={stats.newCount} sub="First seen &lt; 7 days ago" color={t.low}/>
       <StatCard t={t} label="Duplicates" value={stats.dupCount} sub="Near 2+ properties" color={t.high}/>
       <StatCard t={t} label="Recurring" value={stats.recCount} sub="Multiple timeslots" color={t.textMuted}/>
     </div>
@@ -442,7 +444,7 @@ const Dashboard=({t,stats,data})=>{
       {/* New Events (last 24h) */}
       <div style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:4,padding:16}}>
         <div style={{fontSize:9,fontWeight:700,letterSpacing:'.12em',textTransform:'uppercase',color:t.textMuted,marginBottom:12,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-          <span>New Events · This Run</span>
+          <span>New Events · Last 7 Days</span>
           <span style={{...mono,fontSize:10,color:t.low,fontWeight:700}}>{stats.newCount}</span>
         </div>
         {(()=>{
@@ -451,7 +453,7 @@ const Dashboard=({t,stats,data})=>{
             .filter(isNewRow)
             .sort((a,b)=>parseIso(b.first_seen_iso)-parseIso(a.first_seen_iso))
             .slice(0,15);
-          if(!newEvts.length) return <div style={{fontSize:12,color:t.textMuted,textAlign:'center',padding:16}}>No new events this run</div>;
+          if(!newEvts.length) return <div style={{fontSize:12,color:t.textMuted,textAlign:'center',padding:16}}>No new events in the last 7 days</div>;
           return newEvts.map((ev,i)=>{
             const dist=parseFloat(ev.distance_mi)||99;
             const c=dist<1?t.critical:dist<2?t.high:t.low;
@@ -581,9 +583,9 @@ const EventModal=({t,ev,onClose})=>{
         <div style={{fontSize:11,color:t.textSub,lineHeight:1.5}}>{ev.accessibility_notes}</div>
       </div>}
       {/* Flags */}
-      {((ev.is_new||'').toLowerCase()==='yes'||(ev.is_duplicate||'').toLowerCase()==='yes'||(ev.is_recurring||'').toLowerCase()==='yes')&&
+      {(isNewRow(ev)||(ev.is_duplicate||'').toLowerCase()==='yes'||(ev.is_recurring||'').toLowerCase()==='yes')&&
       <div style={{padding:'14px 22px',borderBottom:`1px solid ${t.border}`,display:'flex',gap:8,flexWrap:'wrap'}}>
-        {(ev.is_new||'').toLowerCase()==='yes'&&<span style={{...mono,fontSize:9,fontWeight:700,padding:'3px 8px',borderRadius:2,background:`${t.low}18`,color:t.low,border:`1px solid ${t.low}35`,textTransform:'uppercase',letterSpacing:'.06em'}}>New · This Run</span>}
+        {isNewRow(ev)&&<span style={{...mono,fontSize:9,fontWeight:700,padding:'3px 8px',borderRadius:2,background:`${t.low}18`,color:t.low,border:`1px solid ${t.low}35`,textTransform:'uppercase',letterSpacing:'.06em'}}>New · 7 Days</span>}
         {(ev.is_duplicate||'').toLowerCase()==='yes'&&<span style={{...mono,fontSize:9,fontWeight:700,padding:'3px 8px',borderRadius:2,background:`${t.high}18`,color:t.high,border:`1px solid ${t.high}35`,textTransform:'uppercase',letterSpacing:'.06em'}}>Near 2+ Properties</span>}
         {(ev.is_recurring||'').toLowerCase()==='yes'&&<span style={{...mono,fontSize:9,fontWeight:700,padding:'3px 8px',borderRadius:2,background:`${t.accent}18`,color:t.accent,border:`1px solid ${t.accent}35`,textTransform:'uppercase',letterSpacing:'.06em'}}>Recurring</span>}
       </div>}
