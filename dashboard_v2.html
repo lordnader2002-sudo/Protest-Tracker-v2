@@ -118,21 +118,17 @@ function relTime(iso){
   if(d<7)  return `${d}d ago`;
   return new Date(t).toLocaleDateString('en-US',{month:'short',day:'numeric'});
 }
-function buildNewIds(allRows,hours=24){
-  const cutoff=Date.now()-hours*3600*1000;
-  return new Set(allRows.filter(r=>{
-    const iso=parseIso(r.first_seen_iso);
-    const flag=(r.is_new||'').toLowerCase()==='yes';
-    return flag||(iso>0&&iso>cutoff);
-  }).map(r=>r.event_id).filter(Boolean));
+const NEW_CUTOFF_MS=Date.now()-24*3600*1000;
+function isNewRow(r){
+  return (r.is_new||'').toLowerCase()==='yes'
+      || parseIso(r.first_seen_iso)>NEW_CUTOFF_MS;
 }
 
 function deriveStats(data){
   if(!data) return null;
   const gen=data.general?.rows||[], nk=data.no_kings?.rows||[], md=data.may_day?.rows||[];
   const all=[...gen,...nk,...md];
-  const newIds=buildNewIds(all);
-  const newCount=all.filter(r=>newIds.has(r.event_id)).length;
+  const newCount=all.filter(isNewRow).length;
   const dupCount=all.filter(r=>(r.is_duplicate||'').toLowerCase()==='yes').length;
   const recCount=all.filter(r=>(r.is_recurring||'').toLowerCase()==='yes').length;
 
@@ -186,7 +182,7 @@ function deriveStats(data){
   const orgs=Object.entries(orgMap).map(([name,v])=>({name,count:v.count,types:[...v.types].filter(Boolean).join(', ')})).sort((a,b)=>b.count-a.count);
 
   return {general:gen.length,noKings:nk.length,mayDay:md.length,newCount,dupCount,recCount,
-    types,props,bands,bandsNK,bandsMD,threat,closeCount,markers,orgs,halfMile,newIds,
+    types,props,bands,bandsNK,bandsMD,threat,closeCount,markers,orgs,halfMile,
     generated:data.generated||'',genSubtitle:data.general?.subtitle||'',
     nkSubtitle:data.no_kings?.subtitle||'',mdSubtitle:data.may_day?.subtitle||''};
 }
@@ -454,7 +450,7 @@ const Dashboard=({t,stats,data})=>{
         {(()=>{
           const allRows=[...(data?.general?.rows||[]),...(data?.no_kings?.rows||[]),...(data?.may_day?.rows||[])];
           const newEvts=allRows
-            .filter(r=>stats.newIds.has(r.event_id))
+            .filter(isNewRow)
             .sort((a,b)=>parseIso(b.first_seen_iso)-parseIso(a.first_seen_iso))
             .slice(0,15);
           if(!newEvts.length) return <div style={{fontSize:12,color:t.textMuted,textAlign:'center',padding:16}}>No new events in last 24h</div>;
