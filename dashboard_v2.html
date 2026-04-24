@@ -107,13 +107,24 @@ function useData(){
   return {data,err};
 }
 
-function buildNewIds(allRows){
-  const cutoff=Date.now()-24*60*60*1000;
-  if(allRows.some(r=>r.first_seen_iso)){
-    return new Set(allRows.filter(r=>r.first_seen_iso&&new Date(r.first_seen_iso).getTime()>cutoff)
-      .map(r=>r.event_id).filter(Boolean));
-  }
-  return new Set(allRows.filter(r=>(r.is_new||'').toLowerCase()==='yes').map(r=>r.event_id).filter(Boolean));
+function parseIso(s){if(!s) return 0;const t=new Date(s).getTime();return isNaN(t)?0:t;}
+function relTime(iso){
+  const t=parseIso(iso);if(!t) return '';
+  const ms=Date.now()-t;if(ms<0) return 'just now';
+  const m=Math.floor(ms/60000),h=Math.floor(ms/3600000),d=Math.floor(ms/86400000);
+  if(m<1) return 'just now';
+  if(m<60) return `${m}m ago`;
+  if(h<24) return `${h}h ago`;
+  if(d<7)  return `${d}d ago`;
+  return new Date(t).toLocaleDateString('en-US',{month:'short',day:'numeric'});
+}
+function buildNewIds(allRows,hours=24){
+  const cutoff=Date.now()-hours*3600*1000;
+  return new Set(allRows.filter(r=>{
+    const iso=parseIso(r.first_seen_iso);
+    const flag=(r.is_new||'').toLowerCase()==='yes';
+    return flag||(iso>0&&iso>cutoff);
+  }).map(r=>r.event_id).filter(Boolean));
 }
 
 function deriveStats(data){
@@ -442,18 +453,25 @@ const Dashboard=({t,stats,data})=>{
         </div>
         {(()=>{
           const allRows=[...(data?.general?.rows||[]),...(data?.no_kings?.rows||[]),...(data?.may_day?.rows||[])];
-          const newEvts=allRows.filter(r=>stats.newIds.has(r.event_id)).slice(0,15);
+          const newEvts=allRows
+            .filter(r=>stats.newIds.has(r.event_id))
+            .sort((a,b)=>parseIso(b.first_seen_iso)-parseIso(a.first_seen_iso))
+            .slice(0,15);
           if(!newEvts.length) return <div style={{fontSize:12,color:t.textMuted,textAlign:'center',padding:16}}>No new events in last 24h</div>;
           return newEvts.map((ev,i)=>{
             const dist=parseFloat(ev.distance_mi)||99;
             const c=dist<1?t.critical:dist<2?t.high:t.low;
+            const rel=relTime(ev.first_seen_iso);
             return <div key={i} style={{display:'flex',alignItems:'flex-start',gap:10,padding:'8px 0',
               borderBottom:i<newEvts.length-1?`1px solid ${t.border}`:'none'}}>
               <span style={{...mono,fontSize:9,fontWeight:600,padding:'2px 7px',borderRadius:2,flexShrink:0,marginTop:1,
                 background:`${c}12`,color:c,border:`1px solid ${c}25`,textTransform:'uppercase'}}>{ev.event_type||'EVENT'}</span>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontSize:12,color:t.text,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ev.event_title}</div>
-                <div style={{fontSize:10,color:t.textMuted,marginTop:2}}>{ev.property_name} · {(dist).toFixed(1)} mi</div>
+                <div style={{fontSize:10,color:t.textMuted,marginTop:2,display:'flex',gap:6,alignItems:'center'}}>
+                  <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',minWidth:0}}>{ev.property_name} · {(dist).toFixed(1)} mi</span>
+                  {rel&&<span style={{...mono,color:t.low,fontWeight:700,flexShrink:0}}>• {rel}</span>}
+                </div>
               </div>
               <span style={{...mono,fontSize:12,fontWeight:600,color:t.text,flexShrink:0,whiteSpace:'nowrap'}}>{ev.event_date}</span>
             </div>;

@@ -445,7 +445,7 @@ def seed_first_seen_from_dashboard(path: str) -> dict:
         with open(path) as f:
             data = json.load(f)
         result = {}
-        for sheet in ("general", "no_kings"):
+        for sheet in ("general", "no_kings", "may_day"):
             rows = (data.get(sheet) or {}).get("rows", [])
             for row in rows:
                 eid = str(row.get("event_id") or "")
