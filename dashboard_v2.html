@@ -82,6 +82,7 @@ const ICON_PATHS={
   nogo:"M12 2a10 10 0 100 20A10 10 0 0012 2zM4.93 4.93l14.14 14.14",
   mayday:"M12 2v20M4 7l8-5 8 5M4 17l8 5 8-5M4 12l8 5 8-5",
   map:"M1 6l7-4 8 4 7-4v16l-7 4-8-4-7 4V6z",
+  timeline:"M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z",
   organizers:"M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 7a4 4 0 100 8 4 4 0 000-8zm8 4l2 2 4-4",
   trends:"M22 12h-4l-3 9L9 3l-3 9H2",
   search:"M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z",
@@ -187,6 +188,7 @@ const NAV=[
   {id:'mayday',label:'May Day 2026'},
   null,
   {id:'map',label:'Map'},
+  {id:'timeline',label:'Timeline'},
   {id:'organizers',label:'Organizers'},
   {id:'trends',label:'Trends'},
 ];
@@ -250,7 +252,7 @@ const Sidebar=({t,view,setView,generated})=><aside style={{
 
 /* ═══ TOPBAR ═══════════════════════════════════════════════════ */
 const LABELS={dashboard:'Summary Dashboard',events3:'3-Day Events',nogo:'No Kings Events (30 Days Out)',
-  mayday:'May Day Events (Until May 2)',map:'Event Map',organizers:'Organizers',trends:'Trends'};
+  mayday:'May Day Events (Until May 2)',map:'Event Map',timeline:'Event Timeline',organizers:'Organizers',trends:'Trends'};
 
 const TopBar=({t,view,generated,darkMode,handleDark,subtitle,count})=>{
   const hasCount=count!=null;
@@ -756,6 +758,83 @@ const MapView=({t,markers})=>{
   </div>;
 };
 
+/* ═══ TIMELINE ═════════════════════════════════════════════════ */
+const Timeline=({t,data})=>{
+  const [selected,setSelected]=useState(null);
+  const STREAM_COLOR={general:t.accent,'no_kings':'#7c3aed',may_day:'#ef4444'};
+  const STREAM_LABEL={general:'3-day','no_kings':'no-kings',may_day:'may-day'};
+
+  const allRows=useMemo(()=>{
+    const parseDate=str=>{try{return new Date(str.replace(/\s+EST$/,'').trim());}catch{return new Date(0);}};
+    return [
+      ...(data?.general?.rows||[]).map(r=>({...r,_src:'general'})),
+      ...(data?.no_kings?.rows||[]).map(r=>({...r,_src:'no_kings'})),
+      ...(data?.may_day?.rows||[]).map(r=>({...r,_src:'may_day'})),
+    ].sort((a,b)=>parseDate(a.event_date)-parseDate(b.event_date));
+  },[data]);
+
+  const groups=useMemo(()=>{
+    const dayKey=str=>{try{const d=new Date(str.replace(/\s+EST$/,'').trim());return d.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});}catch{return str||'Unknown';}};
+    const out=[];let cur=null;
+    for(const row of allRows){
+      const k=dayKey(row.event_date);
+      if(!cur||cur.key!==k){cur={key:k,rows:[]};out.push(cur);}
+      cur.rows.push(row);
+    }
+    return out;
+  },[allRows]);
+
+  if(!allRows.length) return <div style={{padding:60,textAlign:'center',color:t.textMuted,fontSize:13}}>No events loaded.</div>;
+
+  return <div style={{padding:'16px 22px'}}>
+    <EventModal t={t} ev={selected} onClose={()=>setSelected(null)}/>
+    {groups.map((g,gi)=><div key={gi} style={{marginBottom:8}}>
+      {/* Date header */}
+      <div style={{display:'flex',alignItems:'center',gap:12,margin:'18px 0 10px',position:'sticky',top:0,background:t.bg,zIndex:2,padding:'4px 0'}}>
+        <span style={{...mono,fontSize:11,fontWeight:700,color:t.accent,letterSpacing:'.08em',textTransform:'uppercase',flexShrink:0}}>{g.key}</span>
+        <div style={{flex:1,height:1,background:t.border}}/>
+        <span style={{...mono,fontSize:10,color:t.textMuted,flexShrink:0}}>{g.rows.length} event{g.rows.length!==1?'s':''}</span>
+      </div>
+      {/* Event cards */}
+      <div style={{paddingLeft:20,borderLeft:`2px solid ${t.border}`,display:'flex',flexDirection:'column',gap:6}}>
+        {g.rows.map((ev,i)=>{
+          const dist=parseFloat(ev.distance_mi)||99;
+          const dc=dist<1?t.critical:dist<2?t.high:t.low;
+          const sc=STREAM_COLOR[ev._src]||t.accent;
+          const timeMatch=ev.event_date?.match(/\d{1,2}:\d{2}/);
+          return <div key={i} onClick={()=>setSelected(ev)}
+            style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:4,padding:'9px 14px',
+              cursor:'pointer',display:'flex',alignItems:'center',gap:12,position:'relative',
+              transition:'border-color .12s'}}
+            onMouseEnter={e=>e.currentTarget.style.borderColor=t.borderStrong}
+            onMouseLeave={e=>e.currentTarget.style.borderColor=t.border}>
+            {/* Dot on the left rail */}
+            <div style={{width:9,height:9,borderRadius:'50%',background:sc,flexShrink:0,
+              position:'absolute',left:-25,top:'50%',transform:'translateY(-50%)',
+              boxShadow:`0 0 0 2px ${t.bg},0 0 0 3px ${sc}55`}}/>
+            {/* Time */}
+            <span style={{...mono,fontSize:11,color:t.textMuted,flexShrink:0,width:60}}>
+              {timeMatch?`${timeMatch[0]} ET`:'—'}
+            </span>
+            {/* Stream badge */}
+            <span style={{...mono,fontSize:9,fontWeight:700,padding:'2px 6px',borderRadius:2,flexShrink:0,
+              background:`${sc}18`,color:sc,border:`1px solid ${sc}35`,textTransform:'uppercase',letterSpacing:'.06em'}}>
+              {STREAM_LABEL[ev._src]}
+            </span>
+            {/* Title + property */}
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:13,fontWeight:600,color:t.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ev.event_title}</div>
+              <div style={{fontSize:11,color:t.textSub,marginTop:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ev.property_name}</div>
+            </div>
+            {/* Distance */}
+            <span style={{...mono,fontSize:12,fontWeight:700,color:dc,flexShrink:0}}>{dist.toFixed(1)} mi</span>
+          </div>;
+        })}
+      </div>
+    </div>)}
+  </div>;
+};
+
 /* ═══ ORGANIZERS ═══════════════════════════════════════════════ */
 const Organizers=({t,orgs})=>{
   const maxOrg=Math.max(...(orgs||[]).map(o=>o.count),1);
@@ -883,6 +962,7 @@ const App=()=>{
         {view==='nogo'&&<EventsTable t={t} rows={data?.no_kings?.rows} type="nogo" subtitle={stats?.nkSubtitle||''}/>}
         {view==='mayday'&&<EventsTable t={t} rows={data?.may_day?.rows} type="mayday" subtitle={stats?.mdSubtitle||''}/>}
         {view==='map'&&<MapView t={t} markers={stats?.markers}/>}
+        {view==='timeline'&&<Timeline t={t} data={data}/>}
         {view==='organizers'&&<Organizers t={t} orgs={stats?.orgs}/>}
         {view==='trends'&&<Trends t={t} data={data}/>}
       </div>
