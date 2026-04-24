@@ -70,13 +70,18 @@ jobs:
           workflow_conclusion: success
           if_no_artifact_found: warn
 
-      - name: Fetch previous dashboard from gh-pages for first_seen tracking
-        if: github.event.inputs.mode != 'regen'
+      - name: Fetch previous dashboard, ledger, and runs log from gh-pages
         run: |
           git fetch origin gh-pages --depth=1 2>/dev/null || true
           git show origin/gh-pages:dashboard_data.json > dashboard_data_prev.json 2>/dev/null \
             && echo "  Loaded previous dashboard_data.json ($(wc -c < dashboard_data_prev.json) bytes)" \
             || echo "  No previous gh-pages dashboard found — all events will be treated as new"
+          git show origin/gh-pages:first_seen_ledger.json > first_seen_ledger.json 2>/dev/null \
+            && echo "  Loaded first_seen_ledger.json ($(wc -c < first_seen_ledger.json) bytes)" \
+            || echo "  No previous ledger found — starting fresh"
+          git show origin/gh-pages:runs_log.jsonl > runs_log.jsonl 2>/dev/null \
+            && echo "  Loaded runs_log.jsonl ($(wc -l < runs_log.jsonl) entries)" \
+            || echo "  No previous runs log found — starting fresh"
 
       - name: Run Protest Tracker (full)
         if: github.event.inputs.mode != 'regen'
@@ -92,7 +97,7 @@ jobs:
         with:
           name: protest-tracker-cache
           path: protest_tracker_cache.json
-          retention-days: 7
+          retention-days: 30
           overwrite: true
 
       # ── Always upload the Excel report ────────────────────────────────────
@@ -111,6 +116,9 @@ jobs:
           cp dashboard_v2.html _site/index.html
           cp index.html _site/classic.html
           cp dashboard_data.json _site/
+          # Durable first_seen ledger and append-only run history committed to gh-pages
+          cp first_seen_ledger.json _site/ 2>/dev/null || true
+          cp runs_log.jsonl _site/ 2>/dev/null || true
           # Copy Excel with a fixed name so the dashboard download link works
           cp protest_tracker_*.xlsx _site/protest_tracker_latest.xlsx 2>/dev/null || true
 

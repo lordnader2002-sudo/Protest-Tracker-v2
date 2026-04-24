@@ -1024,6 +1024,61 @@ def build_summary_sheet(ws, general_rows: list[dict],
 # ── Cache helpers ──────────────────────────────────────────────────────────────
 
 CACHE_FILE = "protest_tracker_cache.json"
+LEDGER_FILE = "first_seen_ledger.json"
+RUNS_LOG_FILE = "runs_log.jsonl"
+LEDGER_RETENTION_DAYS = 8
+
+
+def load_ledger(path: str = LEDGER_FILE) -> dict:
+    """Load durable {event_id: first_seen_iso} ledger committed to gh-pages.
+
+    Acts as a third source of first_seen data (alongside the Actions cache
+    artifact and the previous dashboard_data.json), making "is this event
+    new?" detection robust against artifact expiry or accidental wipes.
+    """
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path) as f:
+            data = json.load(f)
+        return data.get("first_seen", {}) if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def save_ledger(first_seen_map: dict, path: str = LEDGER_FILE,
+                retention_days: int = LEDGER_RETENTION_DAYS) -> None:
+    """Persist the first_seen map after pruning entries older than the
+    retention window. Keeps the ledger file bounded in size while still
+    covering several recent runs.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+    pruned: dict[str, str] = {}
+    for eid, ts in (first_seen_map or {}).items():
+        if not ts:
+            continue
+        try:
+            t = datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+            if t >= cutoff:
+                pruned[str(eid)] = ts
+        except Exception:
+            continue
+    with open(path, "w") as f:
+        json.dump({
+            "updated":        datetime.now(timezone.utc).isoformat(),
+            "retention_days": retention_days,
+            "count":          len(pruned),
+            "first_seen":     pruned,
+        }, f, indent=2)
+    print(f"  ✓ Ledger saved → {path} "
+          f"({len(pruned)} IDs within last {retention_days} days)")
+
+
+def append_runs_log(summary: dict, path: str = RUNS_LOG_FILE) -> None:
+    """Append a single JSON line per run for permanent audit history."""
+    with open(path, "a") as f:
+        f.write(json.dumps(summary) + "\n")
+    print(f"  ✓ Run summary appended → {path}")
 
 
 def save_cache(general_rows: list[dict], no_kings_rows: list[dict],
@@ -1292,16 +1347,26 @@ def main() -> None:
         print(f"\nLoaded {len(properties)} properties.\n")
         print("Querying Mobilize.us public API …\n")
 
-        # Load previous first-seen map — merge two sources for resilience:
-        # 1. Cache artifact (protest_tracker_cache.json) — fast, but can silently fail
-        # 2. Previous dashboard_data.json fetched from gh-pages — always available
+        # Load previous first-seen map — merge three sources for resilience:
+        # 1. Cache artifact (protest_tracker_cache.json) — fast but expires
+        # 2. Durable ledger (first_seen_ledger.json) — committed to gh-pages, last 8 days
+        # 3. Previous dashboard_data.json fetched from gh-pages — final fallback
         first_seen_map = get_first_seen_map(args.cache)
+        n_cache = len(first_seen_map)
+        ledger_map = load_ledger(LEDGER_FILE)
+        for eid, ts in ledger_map.items():
+            if eid not in first_seen_map:
+                first_seen_map[eid] = ts
+        n_after_ledger = len(first_seen_map)
         prev_dashboard = seed_first_seen_from_dashboard("dashboard_data_prev.json")
         for eid, ts in prev_dashboard.items():
             if eid not in first_seen_map:
                 first_seen_map[eid] = ts
         now_iso = datetime.now(timezone.utc).isoformat()
-        print(f"  Previous cache : {len(first_seen_map)} known event IDs for new-event detection")
+        print(f"  Seed sources   : cache={n_cache}, "
+              f"ledger=+{n_after_ledger - n_cache}, "
+              f"dashboard=+{len(first_seen_map) - n_after_ledger} "
+              f"→ {len(first_seen_map)} known event IDs")
 
         general_rows, no_kings_rows, may_day_rows = collect_events(properties)
 
@@ -1335,6 +1400,28 @@ def main() -> None:
         print(f"  May Day rows after collapse : {len(may_day_rows)}")
 
         save_cache(general_rows, no_kings_rows, may_day_rows, args.cache, first_seen_map)
+        save_ledger(first_seen_map)
+
+        sample_titles: list[str] = []
+        for rows in (general_rows, no_kings_rows, may_day_rows):
+            for r in rows:
+                if r.get("is_new") and len(sample_titles) < 5:
+                    title = (r.get("event_title") or "").strip()[:80]
+                    if title:
+                        sample_titles.append(title)
+        append_runs_log({
+            "timestamp":         now_iso,
+            "total_events":      len(general_rows) + len(no_kings_rows) + len(may_day_rows),
+            "general":           len(general_rows),
+            "no_kings":          len(no_kings_rows),
+            "may_day":           len(may_day_rows),
+            "new_3day":          new_g,
+            "new_no_kings":      new_nk,
+            "new_may_day":       new_md,
+            "new_total":         new_g + new_nk + new_md,
+            "sample_new_titles": sample_titles,
+            "seeded_ids":        len(first_seen_map),
+        })
 
     print("\nBuilding Excel workbook …")
     build_excel(general_rows, no_kings_rows, may_day_rows, args.output)
