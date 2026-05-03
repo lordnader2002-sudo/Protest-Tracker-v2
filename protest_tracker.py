@@ -1263,10 +1263,15 @@ def build_dashboard_json(general_rows: list[dict], no_kings_rows: list[dict],
             "rows": _clean(pride_rows),
         },
     }
+    update_trend_data(general_rows, no_kings_rows, pride_rows)
+    try:
+        with open("trend_data.json") as _tf:
+            payload["trend_data"] = _json.load(_tf)
+    except (FileNotFoundError, ValueError):
+        payload["trend_data"] = {"runs": []}
     with open(output_path, "w") as f:
         _json.dump(payload, f)
     print(f"  ✓ Dashboard JSON saved  → {output_path}")
-    update_trend_data(general_rows, no_kings_rows, pride_rows)
 
 
 # ── Entry point ────────────────────────────────────────────────────────────────
