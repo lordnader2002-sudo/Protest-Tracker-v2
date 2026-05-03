@@ -80,7 +80,6 @@ const ICON_PATHS={
   dashboard:"M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm11 0h7v7h-7z",
   events3:"M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4",
   nogo:"M12 2a10 10 0 100 20A10 10 0 0012 2zM4.93 4.93l14.14 14.14",
-  mayday:"M12 2v20M4 7l8-5 8 5M4 17l8 5 8-5M4 12l8 5 8-5",
   map:"M1 6l7-4 8 4 7-4v16l-7 4-8-4-7 4V6z",
   timeline:"M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z",
   organizers:"M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 7a4 4 0 100 8 4 4 0 000-8zm8 4l2 2 4-4",
@@ -148,8 +147,8 @@ function isNewRow(r){
 
 function deriveStats(data){
   if(!data) return null;
-  const gen=data.general?.rows||[], nk=data.no_kings?.rows||[], md=data.may_day?.rows||[];
-  const all=[...gen,...nk,...md];
+  const gen=data.general?.rows||[], nk=data.no_kings?.rows||[];
+  const all=[...gen,...nk];
   BOOTSTRAP_TS=computeBootstrapTs(all);
   const newCount=all.filter(isNewRow).length;
   const dupCount=all.filter(r=>(r.is_duplicate||'').toLowerCase()==='yes').length;
@@ -170,8 +169,6 @@ function deriveStats(data){
   gen.forEach(r=>{const d=parseFloat(r.distance_mi)||99;if(d<1)bands.red++;else if(d<2)bands.amber++;else bands.green++;});
   const bandsNK={red:0,amber:0,green:0};
   nk.forEach(r=>{const d=parseFloat(r.distance_mi)||99;if(d<1)bandsNK.red++;else if(d<2)bandsNK.amber++;else bandsNK.green++;});
-  const bandsMD={red:0,amber:0,green:0};
-  md.forEach(r=>{const d=parseFloat(r.distance_mi)||99;if(d<1)bandsMD.red++;else if(d<2)bandsMD.amber++;else bandsMD.green++;});
 
   // Within ½ Mile — highest priority list
   const halfMile=all.filter(r=>(parseFloat(r.distance_mi)||99)<0.5)
@@ -204,10 +201,10 @@ function deriveStats(data){
   all.forEach(r=>{const s=r.sponsor_name;if(!s)return;if(!orgMap[s])orgMap[s]={count:0,types:new Set()};orgMap[s].count++;orgMap[s].types.add(r.event_type||'');});
   const orgs=Object.entries(orgMap).map(([name,v])=>({name,count:v.count,types:[...v.types].filter(Boolean).join(', ')})).sort((a,b)=>b.count-a.count);
 
-  return {general:gen.length,noKings:nk.length,mayDay:md.length,newCount,dupCount,recCount,
-    types,props,bands,bandsNK,bandsMD,threat,closeCount,markers,orgs,halfMile,
+  return {general:gen.length,noKings:nk.length,newCount,dupCount,recCount,
+    types,props,bands,bandsNK,threat,closeCount,markers,orgs,halfMile,
     generated:data.generated||'',genSubtitle:data.general?.subtitle||'',
-    nkSubtitle:data.no_kings?.subtitle||'',mdSubtitle:data.may_day?.subtitle||''};
+    nkSubtitle:data.no_kings?.subtitle||''};
 }
 
 /* ═══ SIDEBAR ══════════════════════════════════════════════════ */
@@ -215,7 +212,6 @@ const NAV=[
   {id:'dashboard',label:'Summary'},
   {id:'events3',label:'3-Day Events'},
   {id:'nogo',label:'No Kings Events'},
-  {id:'mayday',label:'May Day 2026'},
   null,
   {id:'map',label:'Map'},
   {id:'timeline',label:'Timeline'},
@@ -282,7 +278,7 @@ const Sidebar=({t,view,setView,generated})=><aside style={{
 
 /* ═══ TOPBAR ═══════════════════════════════════════════════════ */
 const LABELS={dashboard:'Summary Dashboard',events3:'3-Day Events',nogo:'No Kings Events (30 Days Out)',
-  mayday:'May Day Events (Until May 2)',map:'Event Map',timeline:'Event Timeline',organizers:'Organizers',trends:'Trends'};
+  map:'Event Map',timeline:'Event Timeline',organizers:'Organizers',trends:'Trends'};
 
 const TopBar=({t,view,generated,darkMode,handleDark,subtitle,count})=>{
   const hasCount=count!=null;
@@ -342,7 +338,6 @@ function buildCSV(data){
   const rows=[
     ...(data?.general?.rows||[]).map(r=>({...r,stream:'3-day'})),
     ...(data?.no_kings?.rows||[]).map(r=>({...r,stream:'no_kings'})),
-    ...(data?.may_day?.rows||[]).map(r=>({...r,stream:'may_day'})),
   ];
   const header=CSV_FIELDS.join(',');
   const body=rows.map(r=>CSV_FIELDS.map(f=>escape(r[f])).join(',')).join('\n');
@@ -378,10 +373,9 @@ const Dashboard=({t,stats,data})=>{
       </button>
     </div>
     {/* Stats */}
-    <div style={{display:'grid',gridTemplateColumns:'repeat(6, 1fr)',gap:12}}>
+    <div style={{display:'grid',gridTemplateColumns:'repeat(5, 1fr)',gap:12}}>
       <StatCard t={t} label="3-Day Events" value={stats.general} sub="72-hour window" color={t.accent}/>
       <StatCard t={t} label="No Kings" value={stats.noKings} sub="30-day window" color="#7c3aed"/>
-      <StatCard t={t} label="May Day 2026" value={stats.mayDay} sub="Until May 2" color="#ef4444"/>
       <StatCard t={t} label="New (7 Days)" value={stats.newCount} sub="First seen &lt; 7 days ago" color={t.low}/>
       <StatCard t={t} label="Duplicates" value={stats.dupCount} sub="Near 2+ properties" color={t.high}/>
       <StatCard t={t} label="Recurring" value={stats.recCount} sub="Multiple timeslots" color={t.textMuted}/>
@@ -392,7 +386,7 @@ const Dashboard=({t,stats,data})=>{
       {/* Proximity */}
       <div style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:4,padding:16}}>
         <div style={{fontSize:9,fontWeight:700,letterSpacing:'.12em',textTransform:'uppercase',color:t.textMuted,marginBottom:14}}>Proximity Breakdown</div>
-        {[{label:'3-Day',b:stats.bands,color:t.accent},{label:'No Kings',b:stats.bandsNK,color:'#7c3aed'},{label:'May Day',b:stats.bandsMD,color:'#ef4444'}].map(g=>{
+        {[{label:'3-Day',b:stats.bands,color:t.accent},{label:'No Kings',b:stats.bandsNK,color:'#7c3aed'}].map(g=>{
           const total=g.b.red+g.b.amber+g.b.green||1;
           return <div key={g.label} style={{marginBottom:12}}>
             <div style={{fontSize:10,fontWeight:700,color:t.textSub,marginBottom:6,textTransform:'uppercase',letterSpacing:'.06em'}}>{g.label}</div>
@@ -471,7 +465,7 @@ const Dashboard=({t,stats,data})=>{
           <span style={{...mono,fontSize:10,color:t.low,fontWeight:700}}>{stats.newCount}</span>
         </div>
         {(()=>{
-          const allRows=[...(data?.general?.rows||[]),...(data?.no_kings?.rows||[]),...(data?.may_day?.rows||[])];
+          const allRows=[...(data?.general?.rows||[]),...(data?.no_kings?.rows||[])];
           const newEvts=allRows
             .filter(isNewRow)
             .sort((a,b)=>parseIso(b.first_seen_iso)-parseIso(a.first_seen_iso))
@@ -798,15 +792,14 @@ const MapView=({t,markers})=>{
 /* ═══ TIMELINE ═════════════════════════════════════════════════ */
 const Timeline=({t,data})=>{
   const [selected,setSelected]=useState(null);
-  const STREAM_COLOR={general:t.accent,'no_kings':'#7c3aed',may_day:'#ef4444'};
-  const STREAM_LABEL={general:'3-day','no_kings':'no-kings',may_day:'may-day'};
+  const STREAM_COLOR={general:t.accent,'no_kings':'#7c3aed'};
+  const STREAM_LABEL={general:'3-day','no_kings':'no-kings'};
 
   const allRows=useMemo(()=>{
     const parseDate=str=>{try{return new Date(str.replace(/\s+EST$/,'').trim());}catch{return new Date(0);}};
     return [
       ...(data?.general?.rows||[]).map(r=>({...r,_src:'general'})),
       ...(data?.no_kings?.rows||[]).map(r=>({...r,_src:'no_kings'})),
-      ...(data?.may_day?.rows||[]).map(r=>({...r,_src:'may_day'})),
     ].sort((a,b)=>parseDate(a.event_date)-parseDate(b.event_date));
   },[data]);
 
@@ -908,7 +901,6 @@ const Trends=({t,data})=>{
       data:{labels,datasets:[
         {label:'3-Day',data:runs.map(r=>r.gen_total??0),borderColor:t.accent,backgroundColor:`${t.accent}22`,tension:.3,fill:false},
         {label:'No Kings',data:runs.map(r=>r.nk_total??0),borderColor:'#7c3aed',backgroundColor:'#7c3aed22',tension:.3,fill:false},
-        {label:'May Day',data:runs.map(r=>r.md_total??0),borderColor:'#ef4444',backgroundColor:'#ef444422',tension:.3,fill:false},
       ]},
       options:{responsive:true,maintainAspectRatio:false,
         plugins:{legend:{labels:{color:t.text,font:{family:"'IBM Plex Sans'",size:11}}}},
@@ -920,7 +912,7 @@ const Trends=({t,data})=>{
   if(!runs.length) return <div style={{padding:40,textAlign:'center',color:t.textMuted,fontSize:13}}>No trend data yet · Trends populate after multiple scheduled runs</div>;
   return <div style={{padding:22}}>
     <h2 style={{fontSize:17,fontWeight:700,color:t.text,marginBottom:4}}>Event Volume Trends</h2>
-    <p style={{fontSize:11,color:t.textMuted,marginBottom:16}}>Totals per run across 3-Day, No Kings, and May Day streams · {runs.length} runs tracked</p>
+    <p style={{fontSize:11,color:t.textMuted,marginBottom:16}}>Totals per run across 3-Day and No Kings streams · {runs.length} runs tracked</p>
     <div style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:4,padding:20,height:'calc(100vh - 200px)',position:'relative'}}>
       <canvas ref={canvasRef}/>
     </div>
@@ -989,15 +981,14 @@ const App=()=>{
     <Sidebar t={t} view={view} setView={handleView} generated={stats?.generated}/>
     <div style={{flex:1,display:'flex',flexDirection:'column',minWidth:0,overflow:'hidden'}}>
       {(()=>{
-        const sub=view==='events3'?stats?.genSubtitle:view==='nogo'?stats?.nkSubtitle:view==='mayday'?stats?.mdSubtitle:'';
-        const count=view==='events3'?(data?.general?.rows||[]).length:view==='nogo'?(data?.no_kings?.rows||[]).length:view==='mayday'?(data?.may_day?.rows||[]).length:null;
+        const sub=view==='events3'?stats?.genSubtitle:view==='nogo'?stats?.nkSubtitle:'';
+        const count=view==='events3'?(data?.general?.rows||[]).length:view==='nogo'?(data?.no_kings?.rows||[]).length:null;
         return <TopBar t={t} view={view} generated={stats?.generated} darkMode={darkMode} handleDark={handleDark} subtitle={sub} count={count}/>;
       })()}
       <div style={{flex:1,overflowY:'auto',position:'relative'}}>
         {view==='dashboard'&&<Dashboard t={t} stats={stats} data={data}/>}
         {view==='events3'&&<EventsTable t={t} rows={data?.general?.rows} type="3day" subtitle={stats?.genSubtitle||''}/>}
         {view==='nogo'&&<EventsTable t={t} rows={data?.no_kings?.rows} type="nogo" subtitle={stats?.nkSubtitle||''}/>}
-        {view==='mayday'&&<EventsTable t={t} rows={data?.may_day?.rows} type="mayday" subtitle={stats?.mdSubtitle||''}/>}
         {view==='map'&&<MapView t={t} markers={stats?.markers}/>}
         {view==='timeline'&&<Timeline t={t} data={data}/>}
         {view==='organizers'&&<Organizers t={t} orgs={stats?.orgs}/>}
