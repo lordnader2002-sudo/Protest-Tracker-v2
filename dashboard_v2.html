@@ -166,7 +166,9 @@ function deriveStats(data){
   // Top properties
   const propMap={};
   all.forEach(r=>{const p=r.property_name||'Unknown';propMap[p]=(propMap[p]||0)+1;});
-  const props=Object.entries(propMap).map(([name,count])=>({name,count})).sort((a,b)=>b.count-a.count).slice(0,10);
+  const allProps=Object.entries(propMap).map(([name,count])=>({name,count})).sort((a,b)=>b.count-a.count);
+  const totalPropCount=allProps.length;
+  const props=allProps.slice(0,10);
 
   // Proximity bands
   const bands={red:0,amber:0,green:0};
@@ -208,7 +210,7 @@ function deriveStats(data){
   const orgs=Object.entries(orgMap).map(([name,v])=>({name,count:v.count,types:[...v.types].filter(Boolean).join(', ')})).sort((a,b)=>b.count-a.count);
 
   return {general:gen.length,noKings:nk.length,pride:pd.length,newCount,dupCount,recCount,
-    types,props,bands,bandsNK,bandsPD,threat,closeCount,markers,orgs,halfMile,
+    types,props,totalPropCount,bands,bandsNK,bandsPD,threat,closeCount,markers,orgs,halfMile,
     generated:data.generated||'',genSubtitle:data.general?.subtitle||'',
     nkSubtitle:data.no_kings?.subtitle||'',pdSubtitle:data.pride?.subtitle||''};
 }
@@ -368,7 +370,7 @@ const StatCard=({t,label,value,sub,spark,color})=><div style={{
 
 const Hero=({t,stats,data,onDownloadCSV})=>{
   const total=(stats?.general||0)+(stats?.noKings||0)+(stats?.pride||0);
-  const brandCount=stats?.props?.length||0;
+  const brandCount=stats?.totalPropCount||0;
   return <div style={{display:'flex',alignItems:'flex-end',justifyContent:'space-between',gap:24,
     paddingBottom:6,borderBottom:`1px solid ${t.border}`,marginBottom:18}}>
     <div style={{minWidth:0}}>
