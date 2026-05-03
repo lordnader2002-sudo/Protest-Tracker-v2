@@ -370,7 +370,6 @@ const StatCard=({t,label,value,sub,spark,color})=><div style={{
 
 const Hero=({t,stats,data,onDownloadCSV})=>{
   const total=(stats?.general||0)+(stats?.noKings||0)+(stats?.pride||0);
-  const brandCount=stats?.totalPropCount||0;
   return <div style={{display:'flex',alignItems:'flex-end',justifyContent:'space-between',gap:24,
     paddingBottom:6,borderBottom:`1px solid ${t.border}`,marginBottom:18}}>
     <div style={{minWidth:0}}>
@@ -380,7 +379,6 @@ const Hero=({t,stats,data,onDownloadCSV})=>{
       <h1 style={{fontSize:38,fontWeight:700,color:t.text,letterSpacing:'-.025em',lineHeight:1.05,marginBottom:6}}>
         <span style={{color:t.accent}}>{total}</span> events tracked
       </h1>
-      <div style={{fontSize:13,color:t.textSub}}>monitored across {brandCount||'—'} properties</div>
     </div>
     <div style={{display:'flex',gap:8,flexShrink:0,paddingBottom:6}}>
       <a href="protest_tracker_latest.xlsx" download style={{
