@@ -22,6 +22,7 @@ import csv
 import json
 import math
 import os
+import re
 import sys
 import time
 from datetime import datetime, timedelta, timezone
@@ -63,6 +64,18 @@ DAYS_GENERAL      = 3    # 3-day event window
 DAYS_NO_KINGS     = 30   # No Kings event window
 
 NO_KINGS_KEYWORDS = ["no kings", "nokings", "no_kings", "#nokings", "50501"]
+
+# Pride Month 2026 — collect events from "now" through end-of-day June 30 2026.
+PRIDE_END_DATE = datetime(2026, 6, 30, 23, 59, 59, tzinfo=_EASTERN)
+PRIDE_KEYWORDS = [
+    "pride parade", "pride march", "pride rally", "pride festival",
+    "pride event", "pride month", "pridemonth", "pride 2026",
+    "lgbtq", "lgbt rights", "trans rights", "queer rights",
+    "stonewall", "drag rights",
+    "#pride", "#pridemonth", "#lgbtq",
+]
+# Public mobilize.us pride hub (best-effort scrape for curated event IDs).
+PRIDE_FEED_URL = "https://www.mobilize.us/pride/"
 
 # Event types to EXCLUDE from all sheets (pure campaign/admin work, meetings).
 EXCLUDE_TYPES = {"PHONE_BANK", "TEXT_BANK", "AUTOMATED_PHONE_BANK", "LETTER_WRITING",
@@ -377,6 +390,30 @@ def is_no_kings(event: dict) -> bool:
     return any(kw in text for kw in NO_KINGS_KEYWORDS)
 
 
+def is_pride(event: dict) -> bool:
+    text = (
+        (event.get("title") or "") + " " + (event.get("description") or "")
+    ).lower()
+    return any(kw in text for kw in PRIDE_KEYWORDS)
+
+
+def fetch_pride_tagged_ids() -> set[int]:
+    """Scrape the public mobilize.us/pride/ feed for event IDs.
+
+    Catches curated Pride events that don't mention Pride keywords explicitly
+    in their title/description. Best-effort — returns empty set on any error.
+    """
+    try:
+        resp = requests.get(PRIDE_FEED_URL, timeout=15,
+                            headers={"User-Agent": "Protest-Tracker/1.0"})
+        resp.raise_for_status()
+        ids = {int(m) for m in re.findall(r'/event/(\d+)', resp.text)}
+        return ids
+    except Exception as e:
+        print(f"  ⚠ Could not fetch Pride feed ({e}); falling back to keyword match only")
+        return set()
+
+
 def get_first_seen_map(cache_path: str) -> dict:
     """Return {str(event_id): iso_timestamp} from the cache artifact.
     Returns an empty dict if the cache doesn't exist or has no first_seen data.
@@ -405,7 +442,7 @@ def seed_first_seen_from_dashboard(path: str) -> dict:
         with open(path) as f:
             data = json.load(f)
         result = {}
-        for sheet in ("general", "no_kings"):
+        for sheet in ("general", "no_kings", "pride"):
             rows = (data.get(sheet) or {}).get("rows", [])
             for row in rows:
                 eid = str(row.get("event_id") or "")
@@ -541,7 +578,7 @@ def cluster_query_params(cluster: list[dict]) -> tuple[str, int]:
 
 def collect_events(
     properties: list[dict],
-) -> tuple[list[dict], list[dict]]:
+) -> tuple[list[dict], list[dict], list[dict]]:
     """
     Cluster properties geographically, then fire one Mobilize.us API query
     per cluster instead of one per zip code.  Typical reduction: ~200 calls
@@ -550,26 +587,36 @@ def collect_events(
     Returns:
       general_rows  – protest-type events within DAYS_GENERAL days
       no_kings_rows – No Kings events within DAYS_NO_KINGS days
+      pride_rows    – Pride Month events between now and PRIDE_END_DATE
     All lists are sorted by event start time.
     """
-    now_ts  = int(datetime.now(tz=timezone.utc).timestamp())
-    end_30d = now_ts + DAYS_NO_KINGS * 86_400
-    end_3d  = now_ts + DAYS_GENERAL  * 86_400
-    api_end = end_30d
+    now_ts   = int(datetime.now(tz=timezone.utc).timestamp())
+    end_30d  = now_ts + DAYS_NO_KINGS * 86_400
+    end_3d   = now_ts + DAYS_GENERAL  * 86_400
+    end_pd   = int(PRIDE_END_DATE.timestamp())
+    # Use the widest end-window so one API call covers general + no_kings + pride.
+    api_end  = max(end_30d, end_pd)
 
     clusters = cluster_properties(properties)
     print(f"  Clustered {len(properties)} properties into {len(clusters)} geographic groups.\n")
 
+    # Pre-fetch curated Pride event IDs from the public mobilize.us feed.
+    print("  Fetching curated Pride feed …")
+    pride_tagged = fetch_pride_tagged_ids()
+    print(f"     → {len(pride_tagged)} event(s) on mobilize.us/pride/ feed\n")
+
     general_rows:  list[dict] = []
     no_kings_rows: list[dict] = []
+    pride_rows:    list[dict] = []
     seen_general:  set[tuple] = set()
     seen_no_kings: set[tuple] = set()
+    seen_pride:    set[tuple] = set()
 
     stats = {"no_coords": 0, "too_far": 0, "excluded_type": 0,
              "outside_window": 0, "passed": 0}
 
     def _loc_key(row: dict):
-        """Location key used for No Kings dedup across hosts."""
+        """Location key used for No Kings / Pride dedup across hosts."""
         lat, lon = row["event_lat"], row["event_lon"]
         if lat != "" and lon != "":
             return (round(float(lat), 4), round(float(lon), 4))
@@ -580,6 +627,7 @@ def collect_events(
             eid       = ev.get("id")
             etype_raw = (ev.get("event_type") or "OTHER").upper()
             no_kings  = is_no_kings(ev)
+            pride     = is_pride(ev) or (eid in pride_tagged)
             for prop in cluster:
                 rows = expand_event(ev, prop, stats)
                 if not rows:
@@ -591,7 +639,8 @@ def collect_events(
                         stats["excluded_type"] += 1
                     elif row_ts > end_3d:
                         stats["outside_window"] += 1
-                    elif ts_key not in seen_general and not no_kings:
+                    elif (ts_key not in seen_general
+                          and not no_kings and not pride):
                         seen_general.add(ts_key)
                         general_rows.append(row)
                         stats["passed"] += 1
@@ -604,6 +653,13 @@ def collect_events(
                         if nk_key not in seen_no_kings:
                             seen_no_kings.add(nk_key)
                             no_kings_rows.append(row)
+
+                    if (pride and etype_raw not in EXCLUDE_TYPES
+                            and row_ts <= end_pd):
+                        pd_key = (_loc_key(row), row["event_dt_sort"], prop["id"])
+                        if pd_key not in seen_pride:
+                            seen_pride.add(pd_key)
+                            pride_rows.append(row)
 
     # ── First pass ────────────────────────────────────────────────────────────
     retry_queue: list[list[dict]] = []   # clusters that hit 429 on first pass
@@ -689,7 +745,8 @@ def collect_events(
 
     general_rows.sort(key=lambda r: r["event_dt_sort"])
     no_kings_rows.sort(key=lambda r: r["event_dt_sort"])
-    return general_rows, no_kings_rows
+    pride_rows.sort(key=lambda r: r["event_dt_sort"])
+    return general_rows, no_kings_rows, pride_rows
 
 
 # ── Excel helpers ──────────────────────────────────────────────────────────────
@@ -1020,6 +1077,7 @@ def append_runs_log(summary: dict, path: str = RUNS_LOG_FILE) -> None:
 
 
 def save_cache(general_rows: list[dict], no_kings_rows: list[dict],
+               pride_rows: list[dict] | None = None,
                path: str = CACHE_FILE,
                first_seen_map: dict | None = None) -> None:
     def _serialize(rows):
@@ -1035,12 +1093,13 @@ def save_cache(general_rows: list[dict], no_kings_rows: list[dict],
         json.dump({
             "general":    _serialize(general_rows),
             "no_kings":   _serialize(no_kings_rows),
+            "pride":      _serialize(pride_rows),
             "first_seen": first_seen_map or {},
         }, f)
     print(f"  ✓ Data cache saved → {path}")
 
 
-def load_cache(path: str = CACHE_FILE) -> tuple[list[dict], list[dict]]:
+def load_cache(path: str = CACHE_FILE) -> tuple[list[dict], list[dict], list[dict]]:
     with open(path) as f:
         data = json.load(f)
 
@@ -1054,13 +1113,14 @@ def load_cache(path: str = CACHE_FILE) -> tuple[list[dict], list[dict]]:
         return out
 
     return (_deserialize(data.get("general", [])),
-            _deserialize(data.get("no_kings", [])))
+            _deserialize(data.get("no_kings", [])),
+            _deserialize(data.get("pride", [])))
 
 
 # ── Build workbook ─────────────────────────────────────────────────────────────
 
 def build_excel(general_rows: list[dict], no_kings_rows: list[dict],
-                output_path: str) -> None:
+                pride_rows: list[dict], output_path: str) -> None:
     wb = Workbook()
 
     # Summary sheet
@@ -1097,14 +1157,31 @@ def build_excel(general_rows: list[dict], no_kings_rows: list[dict],
                         f"  •  Source: Mobilize.us"),
     )
 
+    # Pride Month sheet
+    ws_pd = wb.create_sheet("Pride Month Events")
+    end_pd_str = PRIDE_END_DATE.strftime("%B %d, %Y")
+    write_data_sheet(
+        ws_pd, pride_rows,
+        title_fill   = HDR_PURPLE,
+        col_hdr_fill = COL_PURPLE,
+        alt_fill     = ALT_PURPLE,
+        sheet_title  = "Pride Month 2026 Events — Near Tracked Properties",
+        subtitle     = (f"{now_str}  through  {end_pd_str}"
+                        f"  •  Within {SEARCH_RADIUS_MI} miles of property"
+                        f"  •  Source: Mobilize.us + mobilize.us/pride/ feed"),
+    )
+
     wb.save(output_path)
     print(f"\n  ✓ Excel workbook saved → {output_path}")
 
 
 def update_trend_data(general_rows: list[dict], no_kings_rows: list[dict],
+                       pride_rows: list[dict] | None = None,
                        path: str = "trend_data.json") -> None:
     """Append a summary entry to trend_data.json for historical charting."""
     import json as _json
+
+    pride_rows = pride_rows or []
 
     def _band_counts(rows):
         red   = sum(1 for r in rows if (float(r.get("distance_mi") or 9999)) < 1)
@@ -1116,6 +1193,7 @@ def update_trend_data(general_rows: list[dict], no_kings_rows: list[dict],
     now = datetime.now(_EASTERN)
     gr, ga, gg, gn = _band_counts(general_rows)
     nr, na, ng, nn = _band_counts(no_kings_rows)
+    pr, pa, pg, pn = _band_counts(pride_rows)
     entry = {
         "ts":        now.isoformat(timespec="seconds"),
         "label":     now.strftime("%b %d"),
@@ -1125,6 +1203,9 @@ def update_trend_data(general_rows: list[dict], no_kings_rows: list[dict],
         "nk_total":  len(no_kings_rows),
         "nk_new":    nn,
         "nk_red":    nr, "nk_amber":  na, "nk_green":  ng,
+        "pd_total":  len(pride_rows),
+        "pd_new":    pn,
+        "pd_red":    pr, "pd_amber":  pa, "pd_green":  pg,
     }
     try:
         with open(path) as f:
@@ -1139,11 +1220,14 @@ def update_trend_data(general_rows: list[dict], no_kings_rows: list[dict],
 
 
 def build_dashboard_json(general_rows: list[dict], no_kings_rows: list[dict],
+                          pride_rows: list[dict] | None = None,
                           output_path: str = "dashboard_data.json") -> None:
     import json as _json
+    pride_rows = pride_rows or []
     now = datetime.now(_EASTERN)
     end_3d  = (now + timedelta(days=DAYS_GENERAL)).strftime("%B %d, %Y")
     end_30d = (now + timedelta(days=DAYS_NO_KINGS)).strftime("%B %d, %Y")
+    end_pd  = PRIDE_END_DATE.strftime("%B %d, %Y")
 
     _DASHBOARD_EXTRA = ["event_id", "event_lat", "event_lon", "prop_lat", "prop_lon",
                         "sponsor_name", "sponsor_email", "sponsor_phone", "sponsor_website",
@@ -1173,11 +1257,16 @@ def build_dashboard_json(general_rows: list[dict], no_kings_rows: list[dict],
             "subtitle": f"{now.strftime('%B %d, %Y')}  through  {end_30d}  •  Within {SEARCH_RADIUS_MI} miles",
             "rows": _clean(no_kings_rows),
         },
+        "pride": {
+            "title": "Pride Month 2026",
+            "subtitle": f"{now.strftime('%B %d, %Y')}  through  {end_pd}  •  Within {SEARCH_RADIUS_MI} miles",
+            "rows": _clean(pride_rows),
+        },
     }
     with open(output_path, "w") as f:
         _json.dump(payload, f)
     print(f"  ✓ Dashboard JSON saved  → {output_path}")
-    update_trend_data(general_rows, no_kings_rows)
+    update_trend_data(general_rows, no_kings_rows, pride_rows)
 
 
 # ── Entry point ────────────────────────────────────────────────────────────────
@@ -1230,12 +1319,14 @@ def main() -> None:
             print(f"\n  ERROR: cache file not found: {args.cache}", file=sys.stderr)
             sys.exit(1)
         print(f"\nLoading cached data from {args.cache} …")
-        general_rows, no_kings_rows = load_cache(args.cache)
+        general_rows, no_kings_rows, pride_rows = load_cache(args.cache)
         print(f"  3-Day events   : {len(general_rows)} rows")
         print(f"  No Kings events: {len(no_kings_rows)} rows")
+        print(f"  Pride events   : {len(pride_rows)} rows")
         # Collapse in case this cache predates the timeslot-collapse feature
         general_rows  = collapse_recurring_timeslots(general_rows)
         no_kings_rows = collapse_recurring_timeslots(no_kings_rows)
+        pride_rows    = collapse_recurring_timeslots(pride_rows)
     else:
         print(f"  Properties CSV : {args.csv}")
         print(f"  Output file    : {args.output}")
@@ -1244,6 +1335,7 @@ def main() -> None:
         print(f"  Cluster radius : {CLUSTER_RADIUS_MI} miles (properties grouped for fewer API calls)")
         print(f"  General window : today + {DAYS_GENERAL} days")
         print(f"  No Kings window: today + {DAYS_NO_KINGS} days")
+        print(f"  Pride window   : today → {PRIDE_END_DATE.strftime('%b %d, %Y')}")
         print("=" * 64)
 
         properties = load_properties(args.csv)
@@ -1271,36 +1363,42 @@ def main() -> None:
               f"dashboard=+{len(first_seen_map) - n_after_ledger} "
               f"→ {len(first_seen_map)} known event IDs")
 
-        general_rows, no_kings_rows = collect_events(properties)
+        general_rows, no_kings_rows, pride_rows = collect_events(properties)
 
         print(f"\n{'─'*64}")
         print(f"  3-Day events found        : {len(general_rows)} property-event rows")
         print(f"  No Kings events found     : {len(no_kings_rows)} property-event rows")
+        print(f"  Pride events found        : {len(pride_rows)} property-event rows")
         print(f"{'─'*64}")
 
         print("\nAnnotating event flags (new / duplicate / recurring) …")
         annotate_event_flags(general_rows,  first_seen_map, now_iso)
         annotate_event_flags(no_kings_rows, first_seen_map, now_iso)
+        annotate_event_flags(pride_rows,    first_seen_map, now_iso)
         new_g  = sum(1 for r in general_rows  if r.get("is_new"))
         new_nk = sum(1 for r in no_kings_rows if r.get("is_new"))
+        new_pd = sum(1 for r in pride_rows    if r.get("is_new"))
         dup_g  = sum(1 for r in general_rows  if r.get("is_duplicate"))
         rec_g  = sum(1 for r in general_rows  if r.get("is_recurring"))
         print(f"  New events (3-day)        : {new_g}")
         print(f"  New events (No Kings)     : {new_nk}")
+        print(f"  New events (Pride)        : {new_pd}")
         print(f"  Duplicates (3-day)        : {dup_g}")
         print(f"  Recurring  (3-day)        : {rec_g}")
 
         print("\nCollapsing recurring events to nearest timeslot …")
         general_rows  = collapse_recurring_timeslots(general_rows)
         no_kings_rows = collapse_recurring_timeslots(no_kings_rows)
+        pride_rows    = collapse_recurring_timeslots(pride_rows)
         print(f"  3-Day rows after collapse   : {len(general_rows)}")
         print(f"  No Kings rows after collapse: {len(no_kings_rows)}")
+        print(f"  Pride rows after collapse   : {len(pride_rows)}")
 
-        save_cache(general_rows, no_kings_rows, args.cache, first_seen_map)
+        save_cache(general_rows, no_kings_rows, pride_rows, args.cache, first_seen_map)
         save_ledger(first_seen_map)
 
         sample_titles: list[str] = []
-        for rows in (general_rows, no_kings_rows):
+        for rows in (general_rows, no_kings_rows, pride_rows):
             for r in rows:
                 if r.get("is_new") and len(sample_titles) < 5:
                     title = (r.get("event_title") or "").strip()[:80]
@@ -1308,19 +1406,21 @@ def main() -> None:
                         sample_titles.append(title)
         append_runs_log({
             "timestamp":         now_iso,
-            "total_events":      len(general_rows) + len(no_kings_rows),
+            "total_events":      len(general_rows) + len(no_kings_rows) + len(pride_rows),
             "general":           len(general_rows),
             "no_kings":          len(no_kings_rows),
+            "pride":             len(pride_rows),
             "new_3day":          new_g,
             "new_no_kings":      new_nk,
-            "new_total":         new_g + new_nk,
+            "new_pride":         new_pd,
+            "new_total":         new_g + new_nk + new_pd,
             "sample_new_titles": sample_titles,
             "seeded_ids":        len(first_seen_map),
         })
 
     print("\nBuilding Excel workbook …")
-    build_excel(general_rows, no_kings_rows, args.output)
-    build_dashboard_json(general_rows, no_kings_rows)
+    build_excel(general_rows, no_kings_rows, pride_rows, args.output)
+    build_dashboard_json(general_rows, no_kings_rows, pride_rows)
     print("Done.\n")
 
 
