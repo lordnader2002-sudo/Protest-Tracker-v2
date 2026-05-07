@@ -486,6 +486,7 @@ const btnStyle=(t,accent)=>({
 });
 
 const Dashboard=({t,stats,data})=>{
+  const [selected,setSelected]=useState(null);
   if(!stats) return <div style={{padding:40,textAlign:'center',color:t.textMuted}}>Loading…</div>;
   const maxType=Math.max(...stats.types.map(x=>x.count),1);
   const maxProp=Math.max(...stats.props.map(x=>x.count),1);
@@ -567,8 +568,11 @@ const Dashboard=({t,stats,data})=>{
           if(!rows.length) return <div style={{fontSize:12,color:t.textMuted,textAlign:'center',padding:16}}>No events within ½ mile</div>;
           return rows.map((ev,i)=>{
             const dist=parseFloat(ev.distance_mi)||99;
-            return <div key={i} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 0',
-              borderBottom:i<rows.length-1?`1px solid ${t.border}`:'none'}}>
+            return <div key={i} onClick={()=>setSelected(ev)}
+              style={{display:'flex',alignItems:'center',gap:10,padding:'10px 0',cursor:'pointer',
+              borderBottom:i<rows.length-1?`1px solid ${t.border}`:'none',borderRadius:4,transition:'background .1s'}}
+              onMouseEnter={e=>e.currentTarget.style.background=`${t.accent}09`}
+              onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
               <span style={{...mono,fontSize:12,fontWeight:700,color:t.critical,width:48,flexShrink:0}}>{dist.toFixed(2)}mi</span>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontSize:13,color:t.text,fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ev.event_title}</div>
@@ -597,8 +601,11 @@ const Dashboard=({t,stats,data})=>{
             const dist=parseFloat(ev.distance_mi)||99;
             const c=dist<1?t.critical:dist<2?t.high:t.low;
             const rel=relTime(ev.first_seen_iso);
-            return <div key={i} style={{display:'flex',alignItems:'flex-start',gap:10,padding:'8px 0',
-              borderBottom:i<newEvts.length-1?`1px solid ${t.border}`:'none'}}>
+            return <div key={i} onClick={()=>setSelected(ev)}
+              style={{display:'flex',alignItems:'flex-start',gap:10,padding:'8px 0',cursor:'pointer',
+              borderBottom:i<newEvts.length-1?`1px solid ${t.border}`:'none',borderRadius:4,transition:'background .1s'}}
+              onMouseEnter={e=>e.currentTarget.style.background=`${t.accent}09`}
+              onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
               <span style={{...mono,fontSize:9,fontWeight:600,padding:'2px 7px',borderRadius:2,flexShrink:0,marginTop:1,
                 background:`${c}12`,color:c,border:`1px solid ${c}25`,textTransform:'uppercase'}}>{ev.event_type||'EVENT'}</span>
               <div style={{flex:1,minWidth:0}}>
@@ -614,6 +621,7 @@ const Dashboard=({t,stats,data})=>{
         })()}
       </div>
     </div>
+    <EventModal t={t} ev={selected} onClose={()=>setSelected(null)}/>
   </div>;
 };
 
