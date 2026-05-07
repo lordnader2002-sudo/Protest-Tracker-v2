@@ -1133,35 +1133,139 @@ const Organizers=({t,orgs})=>{
 };
 
 /* ═══ TRENDS ═══════════════════════════════════════════════════ */
-const Trends=({t,data})=>{
-  const canvasRef=useRef(null);
+const Trends=({t,data,stats})=>{
+  const chartRef=useRef(null);
   const runs=data?.trend_data?.runs||[];
+
+  // ── Stream snapshot data ─────────────────────────────────────
+  const streams=[
+    {id:'general', label:'3-Day Window',    color:t.accent,    total:stats?.general||0,  bands:stats?.bands||{red:0,amber:0,green:0},  new:(runs[runs.length-1]?.gen_new??null)},
+    {id:'no_kings',label:'No Kings',        color:'#7c3aed',   total:stats?.noKings||0,  bands:stats?.bandsNK||{red:0,amber:0,green:0}, new:(runs[runs.length-1]?.nk_new??null)},
+    {id:'pride',   label:'Pride Month',     color:'#ec4899',   total:stats?.pride||0,    bands:stats?.bandsPD||{red:0,amber:0,green:0}, new:(runs[runs.length-1]?.pd_new??null)},
+  ];
+
+  // ── Event type distribution ──────────────────────────────────
+  const types=stats?.types||[];
+  const maxType=Math.max(...types.map(x=>x.count),1);
+
+  // ── Historical chart ─────────────────────────────────────────
+  const isDarkBg=(()=>{const b=t.bg||'#fff';const m=b.match(/[0-9a-f]{2}/gi);if(!m)return false;const [r,g,bl]=m.map(x=>parseInt(x,16));return (r+g+bl)/3<128;})();
+  const gridColor=isDarkBg?'rgba(255,255,255,.07)':'rgba(0,0,0,.07)';
+  const showChart=runs.length>=2;
+
   useEffect(()=>{
-    if(!canvasRef.current||!runs.length) return;
-    const isDarkBg=(()=>{const b=t.bg||'#fff';const m=b.match(/[0-9a-f]{2}/gi);if(!m)return false;const [r,g,bl]=m.map(x=>parseInt(x,16));return (r+g+bl)/3<128;})();
-    const gridColor=isDarkBg?'rgba(255,255,255,.08)':'rgba(0,0,0,.08)';
-    const labels=runs.map(r=>r.label||(r.ts?new Date(r.ts).toLocaleDateString('en-US',{month:'short',day:'numeric'}):'')||r.timestamp||'');
-    const chart=new Chart(canvasRef.current,{
+    if(!chartRef.current||!showChart) return;
+    const labels=runs.map(r=>r.label||(r.ts?new Date(r.ts).toLocaleDateString('en-US',{month:'short',day:'numeric'}):'')||'');
+    const chart=new Chart(chartRef.current,{
       type:'line',
       data:{labels,datasets:[
-        {label:'3-Day',data:runs.map(r=>r.gen_total??0),borderColor:t.accent,backgroundColor:`${t.accent}22`,tension:.3,fill:false},
-        {label:'No Kings',data:runs.map(r=>r.nk_total??0),borderColor:'#7c3aed',backgroundColor:'#7c3aed22',tension:.3,fill:false},
-        {label:'Pride Month',data:runs.map(r=>r.pd_total??0),borderColor:'#ec4899',backgroundColor:'#ec489922',tension:.3,fill:false},
+        {label:'3-Day',    data:runs.map(r=>r.gen_total??0),borderColor:t.accent,  backgroundColor:`${t.accent}18`,tension:.35,fill:true,pointRadius:3,pointHoverRadius:5,borderWidth:2},
+        {label:'No Kings', data:runs.map(r=>r.nk_total??0), borderColor:'#7c3aed',backgroundColor:'#7c3aed18',tension:.35,fill:true,pointRadius:3,pointHoverRadius:5,borderWidth:2},
+        {label:'Pride',    data:runs.map(r=>r.pd_total??0), borderColor:'#ec4899',backgroundColor:'#ec489918',tension:.35,fill:true,pointRadius:3,pointHoverRadius:5,borderWidth:2},
       ]},
-      options:{responsive:true,maintainAspectRatio:false,
-        plugins:{legend:{labels:{color:t.text,font:{family:"'Inter'",size:11}}}},
-        scales:{x:{ticks:{color:t.textMuted},grid:{color:gridColor}},y:{beginAtZero:true,ticks:{color:t.textMuted},grid:{color:gridColor}}},
+      options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+        plugins:{
+          legend:{labels:{color:t.text,font:{family:"'Inter'",size:11},boxWidth:12,padding:16}},
+          tooltip:{backgroundColor:t.surface,borderColor:t.border,borderWidth:1,titleColor:t.text,bodyColor:t.textSub,padding:10,
+            callbacks:{title:items=>items[0]?.label||''}},
+        },
+        scales:{
+          x:{ticks:{color:t.textMuted,font:{size:10},maxTicksLimit:14},grid:{color:gridColor},border:{color:t.border}},
+          y:{beginAtZero:true,ticks:{color:t.textMuted,font:{size:10}},grid:{color:gridColor},border:{color:t.border}},
+        },
       },
     });
     return ()=>chart.destroy();
-  },[runs,t]);
-  if(!runs.length) return <div style={{padding:40,textAlign:'center',color:t.textMuted,fontSize:13}}>No trend data yet · Trends populate after multiple scheduled runs</div>;
-  return <div style={{padding:22}}>
-    <h2 style={{fontSize:17,fontWeight:700,color:t.text,marginBottom:4}}>Event Volume Trends</h2>
-    <p style={{fontSize:11,color:t.textMuted,marginBottom:16}}>Totals per run across 3-Day, No Kings, and Pride Month streams · {runs.length} runs tracked</p>
-    <div style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:4,padding:20,height:'calc(100vh - 200px)',position:'relative'}}>
-      <canvas ref={canvasRef}/>
+  },[runs,t,showChart]);
+
+  const sectionHead=(label,sub)=><div style={{marginBottom:14}}>
+    <div style={{...mono,fontSize:10,fontWeight:700,letterSpacing:'.14em',textTransform:'uppercase',color:t.textMuted}}>{label}</div>
+    {sub&&<div style={{fontSize:11,color:t.textMuted,marginTop:2}}>{sub}</div>}
+  </div>;
+
+  const ProxBar=({bands,color})=>{
+    const tot=(bands.red||0)+(bands.amber||0)+(bands.green||0)||1;
+    return <div style={{display:'flex',flexDirection:'column',gap:4,marginTop:8}}>
+      {[{k:'red',c:t.critical,label:'< 1 mi'},{k:'amber',c:t.high,label:'1–2 mi'},{k:'green',c:t.low,label:'> 2 mi'}].map(({k,c,label})=>{
+        const v=bands[k]||0;
+        const pct=Math.round(v/tot*100);
+        return <div key={k} style={{display:'flex',alignItems:'center',gap:8}}>
+          <div style={{...mono,fontSize:9,color:c,width:36,flexShrink:0,fontWeight:700}}>{label}</div>
+          <div style={{flex:1,height:6,borderRadius:3,background:t.border,overflow:'hidden'}}>
+            <div style={{width:`${pct}%`,height:'100%',borderRadius:3,background:c,transition:'width .4s ease'}}/>
+          </div>
+          <div style={{...mono,fontSize:10,color:t.textSub,width:28,textAlign:'right'}}>{v}</div>
+        </div>;
+      })}
+    </div>;
+  };
+
+  return <div style={{padding:24,display:'flex',flexDirection:'column',gap:24}}>
+
+    {/* ── Section 1: Stream snapshot ─────────────────────────── */}
+    <div>
+      {sectionHead('Current Snapshot','Live totals and proximity breakdown per stream')}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14}}>
+        {streams.map(s=>{
+          const tot=(s.bands.red||0)+(s.bands.amber||0)+(s.bands.green||0)||1;
+          return <div key={s.id} style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,padding:18}}>
+            <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:8,marginBottom:4}}>
+              <div>
+                <div style={{...mono,fontSize:9,fontWeight:700,letterSpacing:'.1em',textTransform:'uppercase',color:t.textMuted,marginBottom:4}}>{s.label}</div>
+                <div style={{...mono,fontSize:36,fontWeight:700,color:s.color,lineHeight:1}}>{s.total}</div>
+                <div style={{fontSize:11,color:t.textMuted,marginTop:4}}>events</div>
+              </div>
+              <div style={{textAlign:'right'}}>
+                {s.new!=null&&<div style={{...mono,fontSize:11,color:t.low,fontWeight:700,marginBottom:2}}>+{s.new} new</div>}
+                <div style={{...mono,fontSize:10,color:t.critical,fontWeight:700}}>{s.bands.red||0} within 1 mi</div>
+              </div>
+            </div>
+            <div style={{borderTop:`1px solid ${t.border}`,paddingTop:10,marginTop:10}}>
+              <div style={{...mono,fontSize:9,color:t.textMuted,letterSpacing:'.08em',marginBottom:6}}>PROXIMITY BREAKDOWN</div>
+              <ProxBar bands={s.bands} color={s.color}/>
+            </div>
+          </div>;
+        })}
+      </div>
     </div>
+
+    {/* ── Section 2: Event type distribution ────────────────── */}
+    {types.length>0&&<div>
+      {sectionHead('Event Type Distribution','All streams combined · sorted by volume')}
+      <div style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,padding:18,display:'grid',gridTemplateColumns:'1fr 1fr',gap:'6px 32px'}}>
+        {types.slice(0,20).map((tp,i)=><div key={tp.name} style={{display:'flex',alignItems:'center',gap:10,padding:'5px 0',
+          borderBottom:i<Math.min(types.length,20)-2?`1px solid ${t.border}`:'none'}}>
+          <div style={{...mono,fontSize:9,color:t.textMuted,width:16,textAlign:'right',flexShrink:0}}>{i+1}</div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:11,fontWeight:500,color:t.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginBottom:3}}>{tp.name}</div>
+            <div style={{height:5,borderRadius:3,background:t.border,overflow:'hidden'}}>
+              <div style={{width:`${(tp.count/maxType)*100}%`,height:'100%',borderRadius:3,
+                background:i===0?t.accent:i===1?'#7c3aed':i===2?'#ec4899':t.borderStrong,transition:'width .4s ease'}}/>
+            </div>
+          </div>
+          <div style={{...mono,fontSize:11,fontWeight:700,color:t.textSub,width:28,textAlign:'right',flexShrink:0}}>{tp.count}</div>
+        </div>)}
+      </div>
+    </div>}
+
+    {/* ── Section 3: Historical trend chart ─────────────────── */}
+    <div>
+      {sectionHead('Historical Volume','Event counts per scheduled run over time')}
+      {showChart
+        ? <div style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,padding:20,height:340,position:'relative'}}>
+            <canvas ref={chartRef}/>
+          </div>
+        : <div style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,padding:32,textAlign:'center'}}>
+            <div style={{...mono,fontSize:28,fontWeight:700,color:t.accent,marginBottom:8}}>{runs.length}<span style={{fontSize:16,color:t.textMuted}}> / 2</span></div>
+            <div style={{fontSize:13,color:t.text,fontWeight:500,marginBottom:6}}>Collecting history…</div>
+            <div style={{fontSize:11,color:t.textMuted,maxWidth:320,margin:'0 auto'}}>The trend chart appears after 2+ runs. The workflow runs 3× daily — check back in a few hours.</div>
+            <div style={{marginTop:16,height:4,borderRadius:2,background:t.border,overflow:'hidden',maxWidth:240,margin:'16px auto 0'}}>
+              <div style={{width:`${Math.min((runs.length/5)*100,100)}%`,height:'100%',background:t.accent,borderRadius:2,transition:'width .4s'}}/>
+            </div>
+          </div>
+      }
+    </div>
+
   </div>;
 };
 
@@ -1201,7 +1305,7 @@ const App=()=>{
         {view==='map'&&<MapView t={t} markers={stats?.markers}/>}
         {view==='timeline'&&<Timeline t={t} data={data}/>}
         {view==='organizers'&&<Organizers t={t} orgs={stats?.orgs}/>}
-        {view==='trends'&&<Trends t={t} data={data}/>}
+        {view==='trends'&&<Trends t={t} data={data} stats={stats}/>}
       </div>
     </div>
   </div>;
