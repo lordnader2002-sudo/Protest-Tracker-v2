@@ -1140,7 +1140,7 @@ const Trends=({t,data})=>{
     if(!canvasRef.current||!runs.length) return;
     const isDarkBg=(()=>{const b=t.bg||'#fff';const m=b.match(/[0-9a-f]{2}/gi);if(!m)return false;const [r,g,bl]=m.map(x=>parseInt(x,16));return (r+g+bl)/3<128;})();
     const gridColor=isDarkBg?'rgba(255,255,255,.08)':'rgba(0,0,0,.08)';
-    const labels=runs.map(r=>{try{return new Date(r.timestamp).toLocaleDateString('en-US',{month:'short',day:'numeric'});}catch{return r.timestamp||'';}});
+    const labels=runs.map(r=>r.label||(r.ts?new Date(r.ts).toLocaleDateString('en-US',{month:'short',day:'numeric'}):'')||r.timestamp||'');
     const chart=new Chart(canvasRef.current,{
       type:'line',
       data:{labels,datasets:[
