@@ -88,6 +88,8 @@ const ICON_PATHS={
   timeline:"M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z",
   organizers:"M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 7a4 4 0 100 8 4 4 0 000-8zm8 4l2 2 4-4",
   trends:"M22 12h-4l-3 9L9 3l-3 9H2",
+  threat:"M12 22c5-1 9-5 9-10V5l-9-3-9 3v7c0 5 4 9 9 10zM12 8v4M12 16h.01",
+  property:"M3 21h18M5 21V7l8-4v18M19 21V11l-6-4",
   search:"M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z",
   switchDash:"M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7",
   sun:"M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41M12 7a5 5 0 100 10 5 5 0 000-10z",
@@ -235,8 +237,46 @@ function deriveStats(data){
     events:v.events.slice().sort((a,b)=>(parseFloat(a.distance_mi)||99)-(parseFloat(b.distance_mi)||99)),
   })).sort((a,b)=>b.count-a.count);
 
+  // Full property profiles (one entry per unique property_name)
+  const propProfiles={};
+  const tagProp=(r,src)=>{
+    const name=r.property_name;if(!name)return;
+    if(!propProfiles[name])propProfiles[name]={
+      name, lat:parseFloat(r.prop_lat)||null, lon:parseFloat(r.prop_lon)||null,
+      events:[], streams:{general:0,no_kings:0,pride:0},
+      orgs:new Set(), types:new Set(),
+      closeCount:0, halfMileCount:0, minDist:Infinity, recurring:0, newCount:0,
+    };
+    const p=propProfiles[name];
+    p.events.push({...r,_src:src});
+    p.streams[src]++;
+    if(r.sponsor_name)p.orgs.add(r.sponsor_name);
+    if(r.event_type)p.types.add(r.event_type);
+    const d=parseFloat(r.distance_mi);
+    if(!isNaN(d)){
+      if(d<p.minDist)p.minDist=d;
+      if(d<1)p.closeCount++;
+      if(d<0.5)p.halfMileCount++;
+    }
+    if((r.is_recurring||'').toLowerCase()==='yes')p.recurring++;
+    if(isNewRow(r))p.newCount++;
+    if(!p.lat&&parseFloat(r.prop_lat))p.lat=parseFloat(r.prop_lat);
+    if(!p.lon&&parseFloat(r.prop_lon))p.lon=parseFloat(r.prop_lon);
+  };
+  gen.forEach(r=>tagProp(r,'general'));
+  nk.forEach(r=>tagProp(r,'no_kings'));
+  pd.forEach(r=>tagProp(r,'pride'));
+  const properties=Object.values(propProfiles).map(p=>({
+    ...p,
+    orgs:[...p.orgs],
+    types:[...p.types],
+    minDist:p.minDist===Infinity?null:p.minDist,
+    threat:p.closeCount>=5?'critical':p.closeCount>=3?'high':p.closeCount>=1?'medium':'low',
+    events:p.events.sort((a,b)=>(parseFloat(a.distance_mi)||99)-(parseFloat(b.distance_mi)||99)),
+  })).sort((a,b)=>b.events.length-a.events.length);
+
   return {general:gen.length,noKings:nk.length,pride:pd.length,newCount,dupCount,recCount,
-    types,props,totalPropCount,bands,bandsNK,bandsPD,threat,closeCount,markers,orgs,halfMile,
+    types,props,totalPropCount,bands,bandsNK,bandsPD,threat,closeCount,markers,orgs,halfMile,properties,
     generated:data.generated||'',genSubtitle:data.general?.subtitle||'',
     nkSubtitle:data.no_kings?.subtitle||'',pdSubtitle:data.pride?.subtitle||''};
 }
@@ -245,6 +285,7 @@ function deriveStats(data){
 const NAV=[
   {section:'DISCOVER'},
   {id:'dashboard',label:'Summary'},
+  {id:'threat',label:'Threat Watch'},
   {id:'events3',label:'General Events'},
   {id:'nogo',label:'No Kings Events'},
   {id:'pride',label:'Pride Month 2026'},
@@ -259,6 +300,7 @@ function navBadge(id,stats){
   if(!stats) return null;
   switch(id){
     case 'dashboard':  return null;
+    case 'threat':     return stats.halfMile?.length;
     case 'events3':    return stats.general;
     case 'nogo':       return stats.noKings;
     case 'pride':      return stats.pride;
@@ -328,8 +370,9 @@ const Sidebar=({t,view,setView,stats,version})=><aside style={{
 </aside>;
 
 /* ═══ TOPBAR ═══════════════════════════════════════════════════ */
-const LABELS={dashboard:'Summary',events3:'General Events',nogo:'No Kings Events',
-  pride:'Pride Month 2026',map:'Map',timeline:'Timeline',organizers:'Organizers',trends:'Trends'};
+const LABELS={dashboard:'Summary',threat:'Threat Watch',events3:'General Events',nogo:'No Kings Events',
+  pride:'Pride Month 2026',map:'Map',timeline:'Timeline',organizers:'Organizers',trends:'Trends',
+  property:'Property'};
 
 function fmtBreadcrumbDate(generatedIso){
   if(!generatedIso) return '';
@@ -394,7 +437,7 @@ const StatCard=({t,label,value,sub,spark,color})=><div style={{
   </div>
 </div>;
 
-const Hero=({t,stats,data,onDownloadCSV})=>{
+const Hero=({t,stats,data,onDownloadCSV,onGoThreat})=>{
   const total=(stats?.general||0)+(stats?.noKings||0)+(stats?.pride||0);
   return <div style={{display:'flex',alignItems:'flex-end',justifyContent:'space-between',gap:24,
     paddingBottom:6,borderBottom:`1px solid ${t.border}`,marginBottom:18}}>
@@ -433,19 +476,19 @@ const Hero=({t,stats,data,onDownloadCSV})=>{
         </svg>
         Export CSV
       </button>
-      <a href="#half-mile" onClick={e=>{e.preventDefault();const el=document.getElementById('half-mile');if(el)el.scrollIntoView({behavior:'smooth',block:'start'});}} style={{
+      <button onClick={onGoThreat} style={{
         ...mono,fontSize:11.5,fontWeight:700,letterSpacing:'.02em',
         padding:'9px 16px',borderRadius:7,border:`1px solid ${t.accent}`,
         color:'#0a0e14',background:t.accent,cursor:'pointer',
-        textDecoration:'none',display:'inline-flex',alignItems:'center',gap:7,
+        display:'inline-flex',alignItems:'center',gap:7,
         transition:'transform .12s,box-shadow .12s',boxShadow:`0 0 0 0 ${t.accent}00`}}
         onMouseEnter={e=>{e.currentTarget.style.boxShadow=`0 0 0 4px ${t.accent}25`;}}
         onMouseLeave={e=>{e.currentTarget.style.boxShadow=`0 0 0 0 ${t.accent}00`;}}>
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
         </svg>
-        Threat Watch
-      </a>
+        Threat Watch{stats?.halfMile?.length>0&&<span style={{padding:'1px 6px',borderRadius:99,background:'#0a0e14',color:t.accent,fontSize:10}}>{stats.halfMile.length}</span>}
+      </button>
     </div>
   </div>;
 };
@@ -485,7 +528,7 @@ const btnStyle=(t,accent)=>({
   transition:'background .15s',
 });
 
-const Dashboard=({t,stats,data})=>{
+const Dashboard=({t,stats,data,onOpenProperty,onGoThreat})=>{
   const [selected,setSelected]=useState(null);
   if(!stats) return <div style={{padding:40,textAlign:'center',color:t.textMuted}}>Loading…</div>;
   const maxType=Math.max(...stats.types.map(x=>x.count),1);
@@ -493,7 +536,7 @@ const Dashboard=({t,stats,data})=>{
   const typeColors=['#e74c3c','#e67e22','#f1c40f','#2ecc71','#3498db','#9b59b6','#e91e63','#00bcd4'];
 
   return <div style={{padding:'24px 26px 26px',display:'flex',flexDirection:'column',gap:18}}>
-    <Hero t={t} stats={stats} data={data} onDownloadCSV={buildCSV}/>
+    <Hero t={t} stats={stats} data={data} onDownloadCSV={buildCSV} onGoThreat={onGoThreat}/>
     {/* Stats */}
     <div style={{display:'grid',gridTemplateColumns:'repeat(6, 1fr)',gap:12}}>
       <StatCard t={t} label="General Events" value={stats.general} sub="72-hour window" color={t.accent}/>
@@ -576,7 +619,14 @@ const Dashboard=({t,stats,data})=>{
               <span style={{...mono,fontSize:12,fontWeight:700,color:t.critical,width:48,flexShrink:0}}>{dist.toFixed(2)}mi</span>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontSize:13,color:t.text,fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ev.event_title}</div>
-                <div style={{fontSize:11,color:t.textSub,marginTop:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ev.property_name}</div>
+                <div style={{fontSize:11,color:t.textSub,marginTop:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                  <span onClick={e=>{e.stopPropagation();onOpenProperty&&onOpenProperty(ev.property_name);}}
+                    style={{cursor:onOpenProperty?'pointer':'default',textDecoration:onOpenProperty?'underline dotted':'none',textUnderlineOffset:2}}
+                    onMouseEnter={e=>{if(onOpenProperty)e.currentTarget.style.color=t.accent;}}
+                    onMouseLeave={e=>{if(onOpenProperty)e.currentTarget.style.color='';}}>
+                    {ev.property_name}
+                  </span>
+                </div>
               </div>
               <span style={{...mono,fontSize:12,fontWeight:600,color:t.text,flexShrink:0,whiteSpace:'nowrap'}}>{ev.event_date}</span>
             </div>;
@@ -611,7 +661,13 @@ const Dashboard=({t,stats,data})=>{
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontSize:12,color:t.text,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ev.event_title}</div>
                 <div style={{fontSize:10,color:t.textMuted,marginTop:2,display:'flex',gap:6,alignItems:'center'}}>
-                  <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',minWidth:0}}>{ev.property_name} · {(dist).toFixed(1)} mi</span>
+                  <span onClick={e=>{e.stopPropagation();onOpenProperty&&onOpenProperty(ev.property_name);}}
+                    style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',minWidth:0,
+                    cursor:onOpenProperty?'pointer':'default',textDecoration:onOpenProperty?'underline dotted':'none',textUnderlineOffset:2}}
+                    onMouseEnter={e=>{if(onOpenProperty)e.currentTarget.style.color=t.accent;}}
+                    onMouseLeave={e=>{if(onOpenProperty)e.currentTarget.style.color='';}}>
+                    {ev.property_name} · {(dist).toFixed(1)} mi
+                  </span>
                   {rel&&<span style={{...mono,color:t.low,fontWeight:700,flexShrink:0}}>• {rel}</span>}
                 </div>
               </div>
@@ -753,7 +809,7 @@ const EventModal=({t,ev,onClose})=>{
 };
 
 /* ═══ EVENTS TABLE ═════════════════════════════════════════════ */
-const EventsTable=({t,rows,type,subtitle})=>{
+const EventsTable=({t,rows,type,subtitle,onOpenProperty})=>{
   const [sortCol,setSortCol]=useState('distance_mi');
   const [sortDir,setSortDir]=useState('asc');
   const [search,setSearch]=useState('');
@@ -831,7 +887,12 @@ const EventsTable=({t,rows,type,subtitle})=>{
                 onMouseEnter={()=>setHovered(i)} onMouseLeave={()=>setHovered(null)}
                 onClick={()=>setSelected(ev)}
                 style={{background:hovered===i?`${t.accent}0a`:bandBg,transition:'background .1s',fontWeight:isNew?600:400,cursor:'pointer'}}>
-                <td style={{...tdBase,fontWeight:500,maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ev.property_name}</td>
+                <td style={{...tdBase,fontWeight:500,maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                  <span onClick={e=>{e.stopPropagation();onOpenProperty&&onOpenProperty(ev.property_name);}}
+                    style={{cursor:onOpenProperty?'pointer':'default'}}
+                    onMouseEnter={e=>{if(onOpenProperty)e.currentTarget.style.color=t.accent;}}
+                    onMouseLeave={e=>{if(onOpenProperty)e.currentTarget.style.color='';}}>{ev.property_name}</span>
+                </td>
                 <td style={{...tdBase,maxWidth:220}}>
                   <div style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ev.event_title}</div>
                   {ev.event_url&&<a href={ev.event_url} target="_blank" rel="noopener" style={{fontSize:10,color:t.accent}}>link</a>}
@@ -1269,10 +1330,234 @@ const Trends=({t,data,stats})=>{
   </div>;
 };
 
+/* ═══ THREAT WATCH ═════════════════════════════════════════════ */
+const ThreatWatch=({t,stats,onOpenProperty})=>{
+  const [selected,setSelected]=useState(null);
+  const events=useMemo(()=>{
+    const all=(stats?.halfMile||[]).slice();
+    const parseDt=str=>{try{return new Date((str||'').replace(/\s+EST$/,'').trim()).getTime()||0;}catch{return 0;}};
+    return all.sort((a,b)=>{
+      const da=parseFloat(a.distance_mi)||99, db=parseFloat(b.distance_mi)||99;
+      if(Math.abs(da-db)>0.05) return da-db;
+      return parseDt(a.event_date)-parseDt(b.event_date);
+    });
+  },[stats]);
+  // Group by property
+  const grouped=useMemo(()=>{
+    const map={};
+    events.forEach(e=>{const k=e.property_name||'Unknown';if(!map[k])map[k]=[];map[k].push(e);});
+    return Object.entries(map).map(([name,evs])=>({
+      name, events:evs,
+      minDist:Math.min(...evs.map(x=>parseFloat(x.distance_mi)||99)),
+    })).sort((a,b)=>a.minDist-b.minDist);
+  },[events]);
+
+  if(!events.length) return <div style={{padding:40,textAlign:'center',color:t.textMuted}}>
+    <div style={{...mono,fontSize:11,letterSpacing:'.1em',color:t.low,marginBottom:8}}>● ALL CLEAR</div>
+    <div style={{fontSize:13,color:t.text,marginBottom:4}}>No events within ½ mile of any tracked property</div>
+    <div style={{fontSize:11,color:t.textMuted}}>Threat Watch surfaces events when they fall inside the half-mile danger zone.</div>
+  </div>;
+
+  return <div style={{padding:24}}>
+    <div style={{display:'flex',alignItems:'flex-end',justifyContent:'space-between',gap:16,marginBottom:14,flexWrap:'wrap',
+      paddingBottom:14,borderBottom:`1px solid ${t.border}`}}>
+      <div>
+        <div style={{...mono,fontSize:10,fontWeight:700,letterSpacing:'.18em',color:t.critical,marginBottom:6}}>● ACTIVE THREAT WATCH</div>
+        <h1 style={{fontSize:30,fontWeight:700,color:t.text,letterSpacing:'-.02em',lineHeight:1.05}}>
+          <span style={{color:t.critical}}>{events.length}</span> event{events.length===1?'':'s'} within ½ mile
+        </h1>
+        <div style={{fontSize:12,color:t.textMuted,marginTop:6}}>across {grouped.length} {grouped.length===1?'property':'properties'} · sorted by proximity</div>
+      </div>
+    </div>
+
+    <div style={{display:'flex',flexDirection:'column',gap:16}}>
+      {grouped.map(g=>{
+        const tot=g.events.length;
+        const dc=g.minDist<0.25?t.critical:t.high;
+        return <div key={g.name} style={{background:t.surface,border:`1px solid ${t.border}`,borderLeft:`3px solid ${dc}`,borderRadius:6}}>
+          <div style={{padding:'12px 16px',borderBottom:`1px solid ${t.border}`,display:'flex',alignItems:'center',justifyContent:'space-between',gap:12}}>
+            <div style={{minWidth:0,flex:1}}>
+              <div onClick={()=>onOpenProperty&&onOpenProperty(g.name)}
+                style={{fontSize:14,fontWeight:600,color:t.text,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:6}}
+                onMouseEnter={e=>e.currentTarget.style.color=t.accent}
+                onMouseLeave={e=>e.currentTarget.style.color=t.text}>
+                {g.name}
+                <span style={{fontSize:10,opacity:.7}}>↗</span>
+              </div>
+              <div style={{...mono,fontSize:10,color:t.textMuted,marginTop:2}}>
+                {tot} event{tot===1?'':'s'} · nearest {g.minDist.toFixed(2)} mi
+              </div>
+            </div>
+            <span style={{...mono,fontSize:10,fontWeight:700,padding:'4px 10px',borderRadius:3,
+              background:`${dc}18`,color:dc,border:`1px solid ${dc}35`,textTransform:'uppercase',letterSpacing:'.06em'}}>
+              {g.minDist<0.25?'critical':'high'}
+            </span>
+          </div>
+          <div>{g.events.map((ev,i)=>{
+            const d=parseFloat(ev.distance_mi)||99;
+            const evDc=d<0.25?t.critical:t.high;
+            return <div key={i} onClick={()=>setSelected(ev)} style={{display:'flex',alignItems:'center',gap:12,
+              padding:'10px 16px',cursor:'pointer',transition:'background .1s',
+              borderBottom:i<g.events.length-1?`1px solid ${t.border}`:'none'}}
+              onMouseEnter={e=>e.currentTarget.style.background=`${t.accent}09`}
+              onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+              <span style={{...mono,fontSize:12,fontWeight:700,color:evDc,width:54,flexShrink:0}}>{d.toFixed(2)}mi</span>
+              <span style={{...mono,fontSize:9,fontWeight:600,padding:'2px 7px',borderRadius:2,flexShrink:0,
+                background:t.bg,color:t.textSub,border:`1px solid ${t.border}`,textTransform:'uppercase',letterSpacing:'.04em'}}>{ev.event_type||'EVENT'}</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:12,fontWeight:500,color:t.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ev.event_title||'Untitled'}</div>
+                <div style={{fontSize:10,color:t.textMuted,marginTop:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ev.sponsor_name||'—'}</div>
+              </div>
+              <span style={{...mono,fontSize:11,fontWeight:600,color:t.textSub,flexShrink:0,whiteSpace:'nowrap'}}>{ev.event_date}</span>
+            </div>;
+          })}</div>
+        </div>;
+      })}
+    </div>
+    <EventModal t={t} ev={selected} onClose={()=>setSelected(null)}/>
+  </div>;
+};
+
+/* ═══ PROPERTY DETAIL ══════════════════════════════════════════ */
+const PropertyView=({t,name,stats,onBack,onOpenProperty})=>{
+  const [selected,setSelected]=useState(null);
+  const mapRef=useRef(null);
+  const mapInst=useRef(null);
+  const prop=useMemo(()=>(stats?.properties||[]).find(p=>p.name===name),[stats,name]);
+
+  useEffect(()=>{
+    if(mapInst.current){mapInst.current.remove();mapInst.current=null;}
+    if(!mapRef.current||!prop||!prop.lat||!prop.lon) return;
+    const map=L.map(mapRef.current,{zoomControl:true,scrollWheelZoom:false}).setView([prop.lat,prop.lon],14);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'&copy; CARTO',maxZoom:18}).addTo(map);
+    L.circleMarker([prop.lat,prop.lon],{radius:8,fillColor:'#ffffff',color:'#000',weight:2,fillOpacity:1,opacity:1})
+      .addTo(map).bindPopup(`<b>${prop.name}</b>`);
+    L.circle([prop.lat,prop.lon],{radius:805,color:t.critical,fillColor:t.critical,fillOpacity:.04,weight:1,dashArray:'4,4'}).addTo(map);
+    L.circle([prop.lat,prop.lon],{radius:1609,color:t.high,fillColor:t.high,fillOpacity:.03,weight:1,dashArray:'4,4'}).addTo(map);
+    L.circle([prop.lat,prop.lon],{radius:3219,color:t.low,fillColor:t.low,fillOpacity:.02,weight:1,dashArray:'4,4'}).addTo(map);
+    prop.events.forEach(ev=>{
+      const lat=parseFloat(ev.event_lat),lon=parseFloat(ev.event_lon);
+      if(!lat||!lon) return;
+      const d=parseFloat(ev.distance_mi)||99;
+      const c=d<1?t.critical:d<2?t.high:t.low;
+      L.circleMarker([lat,lon],{radius:5,fillColor:c,color:'#fff',weight:1,fillOpacity:.85})
+        .addTo(map).bindPopup(`<div style="min-width:140px"><b>${ev.event_title}</b><br/><span style="color:#888">${ev.event_type||''}</span><br/><span style="font-size:10px;color:${c};font-weight:700">${d.toFixed(2)} mi</span></div>`);
+    });
+    mapInst.current=map;
+    return ()=>{if(mapInst.current){mapInst.current.remove();mapInst.current=null;}};
+  },[prop,t]);
+
+  if(!prop) return <div style={{padding:40,textAlign:'center',color:t.textMuted}}>
+    <div style={{fontSize:14,color:t.text,marginBottom:8}}>Property "{name}" not found</div>
+    <button onClick={onBack} style={{...mono,fontSize:11,padding:'6px 14px',borderRadius:4,background:'transparent',
+      border:`1px solid ${t.border}`,color:t.accent,cursor:'pointer'}}>← Back</button>
+  </div>;
+
+  const threatColors={critical:t.critical,high:t.high,medium:t.high,low:t.low};
+  const threatColor=threatColors[prop.threat]||t.textMuted;
+  // Top organizers active near this property
+  const orgCounts={};
+  prop.events.forEach(e=>{if(e.sponsor_name)orgCounts[e.sponsor_name]=(orgCounts[e.sponsor_name]||0)+1;});
+  const topOrgs=Object.entries(orgCounts).map(([n,c])=>({name:n,count:c})).sort((a,b)=>b.count-a.count).slice(0,8);
+
+  return <div style={{padding:24,display:'flex',flexDirection:'column',gap:16}}>
+    {/* Back link */}
+    <div>
+      <button onClick={onBack} style={{...mono,fontSize:10,padding:'4px 10px',borderRadius:4,background:'transparent',
+        border:`1px solid ${t.border}`,color:t.textSub,cursor:'pointer',letterSpacing:'.06em'}}>← Back</button>
+    </div>
+
+    {/* Header */}
+    <div style={{paddingBottom:14,borderBottom:`1px solid ${t.border}`,display:'flex',alignItems:'flex-end',justifyContent:'space-between',gap:16,flexWrap:'wrap'}}>
+      <div style={{minWidth:0}}>
+        <div style={{...mono,fontSize:10,fontWeight:700,letterSpacing:'.18em',color:t.textMuted,marginBottom:6}}>PROPERTY PROFILE</div>
+        <h1 style={{fontSize:28,fontWeight:700,color:t.text,letterSpacing:'-.02em',lineHeight:1.1}}>{prop.name}</h1>
+        {prop.lat&&prop.lon&&<div style={{...mono,fontSize:11,color:t.textMuted,marginTop:6}}>{prop.lat.toFixed(4)}, {prop.lon.toFixed(4)}</div>}
+      </div>
+      <div style={{display:'flex',gap:8,alignItems:'center'}}>
+        <span style={{...mono,fontSize:10,fontWeight:700,padding:'4px 10px',borderRadius:3,
+          background:`${threatColor}18`,color:threatColor,border:`1px solid ${threatColor}35`,textTransform:'uppercase',letterSpacing:'.06em'}}>
+          {prop.threat} threat
+        </span>
+      </div>
+    </div>
+
+    {/* Stat cards */}
+    <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:12}}>
+      {[
+        {label:'Total Events',v:prop.events.length,c:t.accent},
+        {label:'Within ½ mi',v:prop.halfMileCount,c:t.critical},
+        {label:'Within 1 mi',v:prop.closeCount,c:t.high},
+        {label:'Organizers',v:prop.orgs.length,c:t.text},
+        {label:'Recurring',v:prop.recurring,c:'#7c3aed'},
+      ].map(s=><div key={s.label} style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,padding:14}}>
+        <div style={{...mono,fontSize:9,fontWeight:700,letterSpacing:'.1em',color:t.textMuted,textTransform:'uppercase',marginBottom:6}}>{s.label}</div>
+        <div style={{...mono,fontSize:32,fontWeight:700,color:s.v?s.c:t.textMuted,lineHeight:1}}>{s.v}</div>
+      </div>)}
+    </div>
+
+    {/* Two-col: Map + Top Organizers */}
+    <div style={{display:'grid',gridTemplateColumns:'2fr 1fr',gap:14}}>
+      <div style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,overflow:'hidden'}}>
+        <div style={{padding:'10px 14px',borderBottom:`1px solid ${t.border}`,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <div style={{...mono,fontSize:10,fontWeight:700,letterSpacing:'.12em',color:t.textMuted,textTransform:'uppercase'}}>Local Map</div>
+          <div style={{...mono,fontSize:9,color:t.textMuted}}>
+            <span style={{color:t.critical}}>● ½ mi</span> · <span style={{color:t.high}}>● 1 mi</span> · <span style={{color:t.low}}>● 2 mi</span>
+          </div>
+        </div>
+        <div ref={mapRef} style={{height:340,background:t.bg}}/>
+      </div>
+      <div style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,padding:14}}>
+        <div style={{...mono,fontSize:10,fontWeight:700,letterSpacing:'.12em',color:t.textMuted,textTransform:'uppercase',marginBottom:10}}>Top Organizers</div>
+        {topOrgs.length===0&&<div style={{fontSize:11,color:t.textMuted}}>No sponsor data</div>}
+        {topOrgs.map(o=><div key={o.name} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,padding:'6px 0',borderBottom:`1px solid ${t.border}`}}>
+          <div style={{fontSize:11,color:t.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1,minWidth:0}}>{o.name}</div>
+          <div style={{...mono,fontSize:11,fontWeight:700,color:t.accent,flexShrink:0}}>{o.count}</div>
+        </div>)}
+      </div>
+    </div>
+
+    {/* Event list */}
+    <div style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,overflow:'hidden'}}>
+      <div style={{padding:'10px 14px',borderBottom:`1px solid ${t.border}`,...mono,fontSize:10,fontWeight:700,letterSpacing:'.12em',color:t.textMuted,textTransform:'uppercase',display:'flex',justifyContent:'space-between'}}>
+        <span>All Events Near {prop.name}</span>
+        <span style={{color:t.textSub}}>{prop.events.length} total · sorted by distance</span>
+      </div>
+      {prop.events.map((ev,i)=>{
+        const d=parseFloat(ev.distance_mi)||99;
+        const c=d<1?t.critical:d<2?t.high:t.low;
+        const src=ev._src||'general';
+        const srcColor=src==='general'?t.accent:src==='no_kings'?'#7c3aed':'#ec4899';
+        const srcLabel=src==='general'?'GEN':src==='no_kings'?'NK':'PD';
+        return <div key={i} onClick={()=>setSelected(ev)} style={{display:'flex',alignItems:'center',gap:12,
+          padding:'10px 14px',cursor:'pointer',transition:'background .1s',
+          borderBottom:i<prop.events.length-1?`1px solid ${t.border}`:'none'}}
+          onMouseEnter={e=>e.currentTarget.style.background=`${t.accent}09`}
+          onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+          <span style={{...mono,fontSize:11,fontWeight:700,color:c,width:50,flexShrink:0}}>{d.toFixed(2)}mi</span>
+          <span style={{...mono,fontSize:8,fontWeight:700,padding:'2px 6px',borderRadius:2,flexShrink:0,
+            background:`${srcColor}18`,color:srcColor,border:`1px solid ${srcColor}30`}}>{srcLabel}</span>
+          <span style={{...mono,fontSize:9,fontWeight:600,padding:'2px 7px',borderRadius:2,flexShrink:0,
+            background:t.bg,color:t.textSub,border:`1px solid ${t.border}`,textTransform:'uppercase',letterSpacing:'.04em'}}>{ev.event_type||'EVENT'}</span>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:12,fontWeight:500,color:t.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ev.event_title||'Untitled'}</div>
+            <div style={{fontSize:10,color:t.textMuted,marginTop:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ev.sponsor_name||'—'}</div>
+          </div>
+          <span style={{...mono,fontSize:11,fontWeight:600,color:t.textSub,flexShrink:0,whiteSpace:'nowrap'}}>{ev.event_date}</span>
+        </div>;
+      })}
+    </div>
+
+    <EventModal t={t} ev={selected} onClose={()=>setSelected(null)}/>
+  </div>;
+};
+
 /* ═══ APP ══════════════════════════════════════════════════════ */
 const App=()=>{
   const saved=(()=>{try{return JSON.parse(localStorage.getItem('pt2_state')||'{}')}catch{return{}}})();
   const [view,setView]=useState(saved.view||'dashboard');
+  const [prevView,setPrevView]=useState('dashboard');
+  const [selectedProperty,setSelectedProperty]=useState(null);
   const [darkMode,setDarkMode]=useState(saved.dark!=='0');
   const [query,setQuery]=useState('');
   const variant=darkMode?'midnight':'daylight';
@@ -1284,6 +1569,8 @@ const App=()=>{
   const persist=(k,v)=>{const s=JSON.parse(localStorage.getItem('pt2_state')||'{}');s[k]=v;localStorage.setItem('pt2_state',JSON.stringify(s));};
   const handleView=v=>{setView(v);persist('view',v);};
   const handleDark=()=>{const nv=!darkMode;setDarkMode(nv);persist('dark',nv?'1':'0');};
+  const openProperty=name=>{setPrevView(view);setSelectedProperty(name);setView('property');};
+  const closeProperty=()=>{setView(prevView||'dashboard');setSelectedProperty(null);};
 
   if(err) return <div style={{padding:60,textAlign:'center',fontFamily:'Inter,sans-serif',color:'#666'}}>
     <h2 style={{marginBottom:12}}>Could not load dashboard_data.json</h2>
@@ -1298,14 +1585,16 @@ const App=()=>{
       <TopBar t={t} view={view} generatedIso={data?.generated_iso}
         darkMode={darkMode} handleDark={handleDark} query={query} setQuery={setQuery}/>
       <div style={{flex:1,overflowY:'auto',position:'relative'}}>
-        {view==='dashboard'&&<Dashboard t={t} stats={stats} data={data}/>}
-        {view==='events3'&&<EventsTable t={t} rows={data?.general?.rows} type="3day" subtitle={stats?.genSubtitle||''}/>}
-        {view==='nogo'&&<EventsTable t={t} rows={data?.no_kings?.rows} type="nogo" subtitle={stats?.nkSubtitle||''}/>}
-        {view==='pride'&&<EventsTable t={t} rows={data?.pride?.rows} type="pride" subtitle={stats?.pdSubtitle||''}/>}
+        {view==='dashboard'&&<Dashboard t={t} stats={stats} data={data} onOpenProperty={openProperty} onGoThreat={()=>handleView('threat')}/>}
+        {view==='threat'&&<ThreatWatch t={t} stats={stats} onOpenProperty={openProperty}/>}
+        {view==='events3'&&<EventsTable t={t} rows={data?.general?.rows} type="3day" subtitle={stats?.genSubtitle||''} onOpenProperty={openProperty}/>}
+        {view==='nogo'&&<EventsTable t={t} rows={data?.no_kings?.rows} type="nogo" subtitle={stats?.nkSubtitle||''} onOpenProperty={openProperty}/>}
+        {view==='pride'&&<EventsTable t={t} rows={data?.pride?.rows} type="pride" subtitle={stats?.pdSubtitle||''} onOpenProperty={openProperty}/>}
         {view==='map'&&<MapView t={t} markers={stats?.markers}/>}
         {view==='timeline'&&<Timeline t={t} data={data}/>}
         {view==='organizers'&&<Organizers t={t} orgs={stats?.orgs}/>}
         {view==='trends'&&<Trends t={t} data={data} stats={stats}/>}
+        {view==='property'&&<PropertyView t={t} name={selectedProperty} stats={stats} onBack={closeProperty} onOpenProperty={openProperty}/>}
       </div>
     </div>
   </div>;
