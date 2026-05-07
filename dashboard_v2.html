@@ -245,7 +245,7 @@ function deriveStats(data){
 const NAV=[
   {section:'DISCOVER'},
   {id:'dashboard',label:'Summary'},
-  {id:'events3',label:'3-Day Events'},
+  {id:'events3',label:'General Events'},
   {id:'nogo',label:'No Kings Events'},
   {id:'pride',label:'Pride Month 2026'},
   {section:'ANALYTICS'},
@@ -328,7 +328,7 @@ const Sidebar=({t,view,setView,stats,version})=><aside style={{
 </aside>;
 
 /* ═══ TOPBAR ═══════════════════════════════════════════════════ */
-const LABELS={dashboard:'Summary',events3:'3-Day Events',nogo:'No Kings Events',
+const LABELS={dashboard:'Summary',events3:'General Events',nogo:'No Kings Events',
   pride:'Pride Month 2026',map:'Map',timeline:'Timeline',organizers:'Organizers',trends:'Trends'};
 
 function fmtBreadcrumbDate(generatedIso){
@@ -464,7 +464,7 @@ function buildCSV(data){
     return s.includes(',')||s.includes('"')||s.includes('\n')?`"${s.replace(/"/g,'""')}"`:s;
   };
   const rows=[
-    ...(data?.general?.rows||[]).map(r=>({...r,stream:'3-day'})),
+    ...(data?.general?.rows||[]).map(r=>({...r,stream:'general'})),
     ...(data?.no_kings?.rows||[]).map(r=>({...r,stream:'no_kings'})),
     ...(data?.pride?.rows||[]).map(r=>({...r,stream:'pride'})),
   ];
@@ -496,7 +496,7 @@ const Dashboard=({t,stats,data})=>{
     <Hero t={t} stats={stats} data={data} onDownloadCSV={buildCSV}/>
     {/* Stats */}
     <div style={{display:'grid',gridTemplateColumns:'repeat(6, 1fr)',gap:12}}>
-      <StatCard t={t} label="3-Day Events" value={stats.general} sub="72-hour window" color={t.accent}/>
+      <StatCard t={t} label="General Events" value={stats.general} sub="72-hour window" color={t.accent}/>
       <StatCard t={t} label="No Kings" value={stats.noKings} sub="30-day window" color="#7c3aed"/>
       <StatCard t={t} label="Pride Month" value={stats.pride} sub="Until June 30" color="#ec4899"/>
       <StatCard t={t} label="New (7 Days)" value={stats.newCount} sub="First seen &lt; 7 days ago" color={t.low}/>
@@ -509,7 +509,7 @@ const Dashboard=({t,stats,data})=>{
       {/* Proximity */}
       <div style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,padding:18}}>
         <div style={{...mono,fontSize:10,fontWeight:600,letterSpacing:'.12em',textTransform:'uppercase',color:t.textMuted,marginBottom:14}}>Proximity Breakdown</div>
-        {[{label:'3-Day',b:stats.bands,color:t.accent},{label:'No Kings',b:stats.bandsNK,color:'#7c3aed'},{label:'Pride Month',b:stats.bandsPD,color:'#ec4899'}].map(g=>{
+        {[{label:'General',b:stats.bands,color:t.accent},{label:'No Kings',b:stats.bandsNK,color:'#7c3aed'},{label:'Pride Month',b:stats.bandsPD,color:'#ec4899'}].map(g=>{
           const total=g.b.red+g.b.amber+g.b.green||1;
           return <div key={g.label} style={{marginBottom:12}}>
             <div style={{fontSize:10,fontWeight:700,color:t.textSub,marginBottom:6,textTransform:'uppercase',letterSpacing:'.06em'}}>{g.label}</div>
@@ -923,7 +923,7 @@ const MapView=({t,markers})=>{
 const Timeline=({t,data})=>{
   const [selected,setSelected]=useState(null);
   const STREAM_COLOR={general:t.accent,'no_kings':'#7c3aed',pride:'#ec4899'};
-  const STREAM_LABEL={general:'3-day','no_kings':'no-kings',pride:'pride'};
+  const STREAM_LABEL={general:'general','no_kings':'no-kings',pride:'pride'};
 
   const allRows=useMemo(()=>{
     const parseDate=str=>{try{return new Date(str.replace(/\s+EST$/,'').trim());}catch{return new Date(0);}};
@@ -1038,7 +1038,7 @@ const OrganizerModal=({t,org,onClose})=>{
       <div style={{padding:'14px 22px',borderBottom:`1px solid ${t.border}`,display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12}}>
         {[
           {label:'Total',v:org.count,c:t.accent},
-          {label:'3-Day',v:org.streams.general,c:t.accent},
+          {label:'General',v:org.streams.general,c:t.accent},
           {label:'No Kings',v:org.streams.no_kings,c:'#7c3aed'},
           {label:'Pride',v:org.streams.pride,c:'#ec4899'},
         ].map(s=><div key={s.label}>
@@ -1099,7 +1099,7 @@ const OrgCard=({t,org,onOpen})=>{
     </div>}
     <div style={{marginTop:'auto',display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,fontSize:10,color:t.textMuted}}>
       <div style={{display:'flex',gap:6,...mono}}>
-        {org.streams.general>0&&<span style={{color:t.accent,fontWeight:700}}>3D·{org.streams.general}</span>}
+        {org.streams.general>0&&<span style={{color:t.accent,fontWeight:700}}>GEN·{org.streams.general}</span>}
         {org.streams.no_kings>0&&<span style={{color:'#7c3aed',fontWeight:700}}>NK·{org.streams.no_kings}</span>}
         {org.streams.pride>0&&<span style={{color:'#ec4899',fontWeight:700}}>PD·{org.streams.pride}</span>}
       </div>
@@ -1139,7 +1139,7 @@ const Trends=({t,data,stats})=>{
 
   // ── Stream snapshot data ─────────────────────────────────────
   const streams=[
-    {id:'general', label:'3-Day Window',    color:t.accent,    total:stats?.general||0,  bands:stats?.bands||{red:0,amber:0,green:0},  new:(runs[runs.length-1]?.gen_new??null)},
+    {id:'general', label:'General Events',  color:t.accent,    total:stats?.general||0,  bands:stats?.bands||{red:0,amber:0,green:0},  new:(runs[runs.length-1]?.gen_new??null)},
     {id:'no_kings',label:'No Kings',        color:'#7c3aed',   total:stats?.noKings||0,  bands:stats?.bandsNK||{red:0,amber:0,green:0}, new:(runs[runs.length-1]?.nk_new??null)},
     {id:'pride',   label:'Pride Month',     color:'#ec4899',   total:stats?.pride||0,    bands:stats?.bandsPD||{red:0,amber:0,green:0}, new:(runs[runs.length-1]?.pd_new??null)},
   ];
@@ -1159,7 +1159,7 @@ const Trends=({t,data,stats})=>{
     const chart=new Chart(chartRef.current,{
       type:'line',
       data:{labels,datasets:[
-        {label:'3-Day',    data:runs.map(r=>r.gen_total??0),borderColor:t.accent,  backgroundColor:`${t.accent}18`,tension:.35,fill:true,pointRadius:3,pointHoverRadius:5,borderWidth:2},
+        {label:'General',  data:runs.map(r=>r.gen_total??0),borderColor:t.accent,  backgroundColor:`${t.accent}18`,tension:.35,fill:true,pointRadius:3,pointHoverRadius:5,borderWidth:2},
         {label:'No Kings', data:runs.map(r=>r.nk_total??0), borderColor:'#7c3aed',backgroundColor:'#7c3aed18',tension:.35,fill:true,pointRadius:3,pointHoverRadius:5,borderWidth:2},
         {label:'Pride',    data:runs.map(r=>r.pd_total??0), borderColor:'#ec4899',backgroundColor:'#ec489918',tension:.35,fill:true,pointRadius:3,pointHoverRadius:5,borderWidth:2},
       ]},
