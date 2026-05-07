@@ -26,10 +26,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -40,7 +40,7 @@ jobs:
       - name: Download latest data cache (regen only)
         if: github.event.inputs.mode == 'regen'
         id: download-cache
-        uses: dawidd6/action-download-artifact@v6
+        uses: dawidd6/action-download-artifact@v21
         with:
           name: protest-tracker-cache
           workflow: protest_tracker.yml
@@ -63,7 +63,7 @@ jobs:
       # ── Full run path ──────────────────────────────────────────────────────
       - name: Download previous cache for new-event detection (full run)
         if: github.event.inputs.mode != 'regen'
-        uses: dawidd6/action-download-artifact@v6
+        uses: dawidd6/action-download-artifact@v21
         with:
           name: protest-tracker-cache
           workflow: protest_tracker.yml
@@ -93,7 +93,7 @@ jobs:
 
       - name: Save data cache artifact (full run only)
         if: github.event.inputs.mode != 'regen'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: protest-tracker-cache
           path: protest_tracker_cache.json
@@ -102,7 +102,7 @@ jobs:
 
       # ── Always upload the Excel report ────────────────────────────────────
       - name: Upload report as artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: "protest-tracker-report-${{ github.run_id }}"
           path: "protest_tracker_*.xlsx"
@@ -123,10 +123,15 @@ jobs:
           cp protest_tracker_*.xlsx _site/protest_tracker_latest.xlsx 2>/dev/null || true
 
       - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./_site
-          publish_branch: gh-pages
-          force_orphan: false
-          keep_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd _site
+          git init -b gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -m "Deploy $(date -u +%Y-%m-%dT%H:%M:%SZ) [skip ci]"
+          git push --force \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" \
+            gh-pages
