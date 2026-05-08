@@ -1212,17 +1212,21 @@ const Trends=({t,data,stats})=>{
   // ── Historical chart ─────────────────────────────────────────
   const isDarkBg=(()=>{const b=t.bg||'#fff';const m=b.match(/[0-9a-f]{2}/gi);if(!m)return false;const [r,g,bl]=m.map(x=>parseInt(x,16));return (r+g+bl)/3<128;})();
   const gridColor=isDarkBg?'rgba(255,255,255,.07)':'rgba(0,0,0,.07)';
-  const showChart=runs.length>=2;
+  const showChart=runs.length>=1;
+  const useBar=runs.length<2;
 
   useEffect(()=>{
     if(!chartRef.current||!showChart) return;
     const labels=runs.map(r=>r.label||(r.ts?new Date(r.ts).toLocaleDateString('en-US',{month:'short',day:'numeric'}):'')||'');
+    const baseDataset=(label,data,color)=>useBar
+      ? {label,data,backgroundColor:`${color}cc`,borderColor:color,borderWidth:1,borderRadius:4}
+      : {label,data,borderColor:color,backgroundColor:`${color}18`,tension:.35,fill:true,pointRadius:3,pointHoverRadius:5,borderWidth:2};
     const chart=new Chart(chartRef.current,{
-      type:'line',
+      type:useBar?'bar':'line',
       data:{labels,datasets:[
-        {label:'General',  data:runs.map(r=>r.gen_total??0),borderColor:t.accent,  backgroundColor:`${t.accent}18`,tension:.35,fill:true,pointRadius:3,pointHoverRadius:5,borderWidth:2},
-        {label:'No Kings', data:runs.map(r=>r.nk_total??0), borderColor:'#7c3aed',backgroundColor:'#7c3aed18',tension:.35,fill:true,pointRadius:3,pointHoverRadius:5,borderWidth:2},
-        {label:'Pride',    data:runs.map(r=>r.pd_total??0), borderColor:'#ec4899',backgroundColor:'#ec489918',tension:.35,fill:true,pointRadius:3,pointHoverRadius:5,borderWidth:2},
+        baseDataset('General',  runs.map(r=>r.gen_total??0),t.accent),
+        baseDataset('No Kings', runs.map(r=>r.nk_total??0),'#7c3aed'),
+        baseDataset('Pride',    runs.map(r=>r.pd_total??0),'#ec4899'),
       ]},
       options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
         plugins:{
@@ -1237,7 +1241,7 @@ const Trends=({t,data,stats})=>{
       },
     });
     return ()=>chart.destroy();
-  },[runs,t,showChart]);
+  },[runs,t,showChart,useBar]);
 
   const sectionHead=(label,sub)=><div style={{marginBottom:14}}>
     <div style={{...mono,fontSize:10,fontWeight:700,letterSpacing:'.14em',textTransform:'uppercase',color:t.textMuted}}>{label}</div>
@@ -1311,18 +1315,14 @@ const Trends=({t,data,stats})=>{
 
     {/* ── Section 3: Historical trend chart ─────────────────── */}
     <div>
-      {sectionHead('Historical Volume','Event counts per scheduled run over time')}
+      {sectionHead('Historical Volume',runs.length<2?'First run captured — line chart unlocks after the next scheduled run':'Event counts per scheduled run over time')}
       {showChart
         ? <div style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,padding:20,height:340,position:'relative'}}>
             <canvas ref={chartRef}/>
+            {runs.length<2&&<div style={{position:'absolute',top:12,right:14,...mono,fontSize:9,color:t.textMuted,letterSpacing:'.08em',textTransform:'uppercase'}}>Building history… {runs.length}/5 runs</div>}
           </div>
         : <div style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,padding:32,textAlign:'center'}}>
-            <div style={{...mono,fontSize:28,fontWeight:700,color:t.accent,marginBottom:8}}>{runs.length}<span style={{fontSize:16,color:t.textMuted}}> / 2</span></div>
-            <div style={{fontSize:13,color:t.text,fontWeight:500,marginBottom:6}}>Collecting history…</div>
-            <div style={{fontSize:11,color:t.textMuted,maxWidth:320,margin:'0 auto'}}>The trend chart appears after 2+ runs. The workflow runs 3× daily — check back in a few hours.</div>
-            <div style={{marginTop:16,height:4,borderRadius:2,background:t.border,overflow:'hidden',maxWidth:240,margin:'16px auto 0'}}>
-              <div style={{width:`${Math.min((runs.length/5)*100,100)}%`,height:'100%',background:t.accent,borderRadius:2,transition:'width .4s'}}/>
-            </div>
+            <div style={{fontSize:13,color:t.textMuted}}>No run data yet — check back after the workflow executes.</div>
           </div>
       }
     </div>
