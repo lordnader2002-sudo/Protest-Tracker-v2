@@ -1161,56 +1161,77 @@ const OrganizerModal=({t,org,onClose})=>{
   </div>;
 };
 
-const OrgCard=({t,org,onOpen})=>{
+const OrgRow=({t,org,rank,maxCount,onOpen})=>{
   const distColor=org.minDist!=null?(org.minDist<1?t.critical:org.minDist<2?t.high:t.low):t.textMuted;
+  const pct=Math.max(3,Math.round(org.count/maxCount*100));
   return <div onClick={()=>onOpen(org)} style={{
-    background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,padding:14,
-    cursor:'pointer',transition:'all .12s ease',position:'relative',
-    display:'flex',flexDirection:'column',gap:10,minHeight:130}}
-    onMouseEnter={e=>{e.currentTarget.style.borderColor=t.accent;e.currentTarget.style.transform='translateY(-1px)';}}
-    onMouseLeave={e=>{e.currentTarget.style.borderColor=t.border;e.currentTarget.style.transform='translateY(0)';}}>
-    <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:8}}>
-      <div style={{minWidth:0,flex:1}}>
-        <div style={{fontSize:13,fontWeight:600,color:t.text,lineHeight:1.3,
-          display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>{org.name}</div>
-      </div>
-      <div style={{...mono,fontSize:22,fontWeight:700,color:t.accent,flexShrink:0,lineHeight:1}}>{org.count}</div>
+    display:'flex',alignItems:'center',gap:14,padding:'10px 16px',cursor:'pointer',
+    borderTop:`1px solid ${t.border}`,transition:'background .1s ease'}}
+    onMouseEnter={e=>e.currentTarget.style.background=t.bg}
+    onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+    <div style={{...mono,fontSize:11,fontWeight:700,color:t.textMuted,width:30,flexShrink:0,textAlign:'right'}}>{rank}</div>
+    <div style={{flex:1,minWidth:0}}>
+      <div style={{fontSize:13,fontWeight:600,color:t.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{org.name}</div>
+      {org.typesStr&&<div style={{fontSize:10,color:t.textMuted,marginTop:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{org.typesStr}</div>}
     </div>
-    {org.types.length>0&&<div style={{display:'flex',flexWrap:'wrap',gap:4}}>
-      {org.types.slice(0,3).map(tt=><span key={tt} style={{...mono,fontSize:9,fontWeight:600,
-        padding:'2px 6px',borderRadius:2,background:t.bg,color:t.textSub,
-        border:`1px solid ${t.border}`,textTransform:'uppercase',letterSpacing:'.04em'}}>{tt}</span>)}
-    </div>}
-    <div style={{marginTop:'auto',display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,fontSize:10,color:t.textMuted}}>
-      <div style={{display:'flex',gap:6,...mono}}>
-        {org.streams.general>0&&<span style={{color:t.accent,fontWeight:700}}>GEN·{org.streams.general}</span>}
-        {org.streams.no_kings>0&&<span style={{color:'#7c3aed',fontWeight:700}}>NK·{org.streams.no_kings}</span>}
-        {org.streams.pride>0&&<span style={{color:'#ec4899',fontWeight:700}}>PD·{org.streams.pride}</span>}
+    <div style={{width:140,flexShrink:0,display:'flex',alignItems:'center',gap:10}}>
+      <div style={{flex:1,height:6,borderRadius:3,background:t.border,overflow:'hidden'}}>
+        <div style={{width:`${pct}%`,height:'100%',background:t.accent,borderRadius:3}}/>
       </div>
-      {org.minDist!=null&&<span style={{...mono,color:distColor,fontWeight:700}}>{org.minDist.toFixed(2)} mi</span>}
+      <div style={{...mono,fontSize:15,fontWeight:700,color:t.accent,width:22,textAlign:'right'}}>{org.count}</div>
     </div>
+    <div style={{...mono,fontSize:10,display:'flex',gap:9,width:130,flexShrink:0,justifyContent:'flex-end'}}>
+      {org.streams.general>0&&<span style={{color:t.accent,fontWeight:700}}>GEN {org.streams.general}</span>}
+      {org.streams.no_kings>0&&<span style={{color:'#7c3aed',fontWeight:700}}>NK {org.streams.no_kings}</span>}
+      {org.streams.pride>0&&<span style={{color:'#ec4899',fontWeight:700}}>PD {org.streams.pride}</span>}
+    </div>
+    <div style={{...mono,fontSize:11,fontWeight:700,color:distColor,width:62,flexShrink:0,textAlign:'right'}}>
+      {org.minDist!=null?`${org.minDist.toFixed(2)} mi`:'—'}</div>
   </div>;
 };
 
 const Organizers=({t,orgs})=>{
   const [search,setSearch]=useState('');
   const [selected,setSelected]=useState(null);
+  const [sort,setSort]=useState('count');
   if(!orgs||!orgs.length) return <div style={{padding:40,textAlign:'center',color:t.textMuted}}>No organizer data available</div>;
   const s=search.trim().toLowerCase();
-  const filtered=s?orgs.filter(o=>o.name.toLowerCase().includes(s)||o.typesStr.toLowerCase().includes(s)):orgs;
+  const maxCount=Math.max(...orgs.map(o=>o.count),1);
+  const filtered=(s?orgs.filter(o=>o.name.toLowerCase().includes(s)||o.typesStr.toLowerCase().includes(s)):orgs)
+    .slice().sort((a,b)=>{
+      if(sort==='name')return a.name.localeCompare(b.name);
+      if(sort==='dist')return (a.minDist??99)-(b.minDist??99);
+      return b.count-a.count;
+    });
+  const sortBtn=(id,label)=><button onClick={()=>setSort(id)} style={{...mono,fontSize:10,fontWeight:700,
+    padding:'6px 12px',borderRadius:5,cursor:'pointer',textTransform:'uppercase',letterSpacing:'.05em',
+    border:`1px solid ${sort===id?t.accent:t.border}`,
+    background:sort===id?`${t.accent}1a`:'transparent',color:sort===id?t.accent:t.textMuted}}>{label}</button>;
   return <div style={{padding:22}}>
     <div style={{display:'flex',alignItems:'flex-end',justifyContent:'space-between',gap:16,marginBottom:14,flexWrap:'wrap'}}>
       <div>
         <h2 style={{fontSize:17,fontWeight:700,color:t.text,marginBottom:4}}>Event Organizers</h2>
-        <p style={{fontSize:11,color:t.textMuted}}>Click any card for contact info, stats, and event list · {orgs.length} organizers tracked</p>
+        <p style={{fontSize:11,color:t.textMuted}}>Click any row for contact info, stats, and event list · {orgs.length} tracked</p>
       </div>
-      <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search organizers…"
-        style={{...mono,fontSize:11,padding:'8px 12px',border:`1px solid ${t.border}`,borderRadius:6,
-        background:t.surface,color:t.text,width:240,outline:'none'}}/>
+      <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+        <span style={{...mono,fontSize:9,fontWeight:700,color:t.textMuted,textTransform:'uppercase',letterSpacing:'.06em'}}>Sort</span>
+        {sortBtn('count','Events')}{sortBtn('name','Name')}{sortBtn('dist','Nearest')}
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search organizers…"
+          style={{...mono,fontSize:11,padding:'7px 12px',border:`1px solid ${t.border}`,borderRadius:6,
+          background:t.surface,color:t.text,width:200,outline:'none'}}/>
+      </div>
     </div>
-    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))',gap:12}}>
-      {filtered.map(o=><OrgCard key={o.name} t={t} org={o} onOpen={setSelected}/>)}
-    </div>
+    {filtered.length>0&&<div style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,overflow:'hidden'}}>
+      <div style={{display:'flex',alignItems:'center',gap:14,padding:'8px 16px',
+        ...mono,fontSize:9,fontWeight:700,color:t.textMuted,textTransform:'uppercase',letterSpacing:'.06em'}}>
+        <div style={{width:30,flexShrink:0,textAlign:'right'}}>#</div>
+        <div style={{flex:1,minWidth:0}}>Organizer</div>
+        <div style={{width:140,flexShrink:0}}>Events</div>
+        <div style={{width:130,flexShrink:0,textAlign:'right'}}>Streams</div>
+        <div style={{width:62,flexShrink:0,textAlign:'right'}}>Nearest</div>
+      </div>
+      {filtered.map((o,i)=><OrgRow key={o.name} t={t} org={o} rank={i+1} maxCount={maxCount} onOpen={setSelected}/>)}
+    </div>}
     {!filtered.length&&<div style={{padding:40,textAlign:'center',color:t.textMuted,fontSize:12}}>No organizers match "{search}"</div>}
     <OrganizerModal t={t} org={selected} onClose={()=>setSelected(null)}/>
   </div>;
