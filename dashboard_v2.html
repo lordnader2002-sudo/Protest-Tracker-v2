@@ -90,6 +90,7 @@ const ICON_PATHS={
   trends:"M22 12h-4l-3 9L9 3l-3 9H2",
   threat:"M12 22c5-1 9-5 9-10V5l-9-3-9 3v7c0 5 4 9 9 10zM12 8v4M12 16h.01",
   property:"M3 21h18M5 21V7l8-4v18M19 21V11l-6-4",
+  ice:"M3 21h18M5 21V8l7-4 7 4v13M9 21v-4h6v4M8 11h.01M12 11h.01M16 11h.01M8 14h.01M12 14h.01M16 14h.01",
   search:"M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z",
   switchDash:"M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7",
   sun:"M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41M12 7a5 5 0 100 10 5 5 0 000-10z",
@@ -154,6 +155,10 @@ function isNewRow(r){
 function deriveStats(data){
   if(!data) return null;
   const gen=data.general?.rows||[], nk=data.no_kings?.rows||[], pd=data.pride?.rows||[];
+  // ICE detention protests are anchored on detention centers, NOT company
+  // properties — kept out of `all` so company Threat Watch / property / organizer
+  // aggregations are unaffected.
+  const ice=data.ice?.rows||[];
   const all=[...gen,...nk,...pd];
   BOOTSTRAP_TS=computeBootstrapTs(all);
   const newCount=all.filter(isNewRow).length;
@@ -179,6 +184,8 @@ function deriveStats(data){
   nk.forEach(r=>{const d=parseFloat(r.distance_mi)||99;if(d<1)bandsNK.red++;else if(d<2)bandsNK.amber++;else bandsNK.green++;});
   const bandsPD={red:0,amber:0,green:0};
   pd.forEach(r=>{const d=parseFloat(r.distance_mi)||99;if(d<1)bandsPD.red++;else if(d<2)bandsPD.amber++;else bandsPD.green++;});
+  const bandsICE={red:0,amber:0,green:0};
+  ice.forEach(r=>{const d=parseFloat(r.distance_mi)||99;if(d<1)bandsICE.red++;else if(d<2)bandsICE.amber++;else bandsICE.green++;});
 
   // Within ½ Mile — highest priority list
   const halfMile=all.filter(r=>(parseFloat(r.distance_mi)||99)<0.5)
@@ -203,6 +210,17 @@ function deriveStats(data){
     seen.add(key);
     const dist=parseFloat(r.distance_mi)||99;
     markers.push({key,lat,lon,name:r.event_title,type:r.event_type,
+      threat:dist<1?'critical':dist<2?'high':'low',count:1,dist});
+  });
+  // ICE detention protests on the map (tagged so they can be styled distinctly)
+  ice.forEach(r=>{
+    const lat=parseFloat(r.event_lat),lon=parseFloat(r.event_lon);
+    if(!lat||!lon) return;
+    const key=`ice:${lat.toFixed(3)},${lon.toFixed(3)}`;
+    if(seen.has(key)){const m=markers.find(x=>x.key===key);if(m)m.count++;return;}
+    seen.add(key);
+    const dist=parseFloat(r.distance_mi)||99;
+    markers.push({key,lat,lon,name:r.event_title,type:r.event_type,stream:'ice',
       threat:dist<1?'critical':dist<2?'high':'low',count:1,dist});
   });
 
@@ -275,10 +293,10 @@ function deriveStats(data){
     events:p.events.sort((a,b)=>(parseFloat(a.distance_mi)||99)-(parseFloat(b.distance_mi)||99)),
   })).sort((a,b)=>b.events.length-a.events.length);
 
-  return {general:gen.length,noKings:nk.length,pride:pd.length,newCount,dupCount,recCount,
-    types,props,totalPropCount,bands,bandsNK,bandsPD,threat,closeCount,markers,orgs,halfMile,properties,
+  return {general:gen.length,noKings:nk.length,pride:pd.length,ice:ice.length,newCount,dupCount,recCount,
+    types,props,totalPropCount,bands,bandsNK,bandsPD,bandsICE,threat,closeCount,markers,orgs,halfMile,properties,
     generated:data.generated||'',genSubtitle:data.general?.subtitle||'',
-    nkSubtitle:data.no_kings?.subtitle||'',pdSubtitle:data.pride?.subtitle||''};
+    nkSubtitle:data.no_kings?.subtitle||'',pdSubtitle:data.pride?.subtitle||'',iceSubtitle:data.ice?.subtitle||''};
 }
 
 /* ═══ SIDEBAR ══════════════════════════════════════════════════ */
@@ -289,6 +307,7 @@ const NAV=[
   {id:'events3',label:'General Events'},
   {id:'nogo',label:'No Kings Events'},
   {id:'pride',label:'Pride Month 2026'},
+  {id:'ice',label:'ICE Detention'},
   {section:'ANALYTICS'},
   {id:'map',label:'Map'},
   {id:'timeline',label:'Timeline'},
@@ -304,6 +323,7 @@ function navBadge(id,stats){
     case 'events3':    return stats.general;
     case 'nogo':       return stats.noKings;
     case 'pride':      return stats.pride;
+    case 'ice':        return stats.ice;
     case 'map':        return stats.markers?.length;
     case 'timeline':   return (stats.general||0)+(stats.noKings||0)+(stats.pride||0);
     case 'organizers': return stats.orgs?.length;
@@ -371,8 +391,8 @@ const Sidebar=({t,view,setView,stats,version})=><aside style={{
 
 /* ═══ TOPBAR ═══════════════════════════════════════════════════ */
 const LABELS={dashboard:'Summary',threat:'Threat Watch',events3:'General Events',nogo:'No Kings Events',
-  pride:'Pride Month 2026',map:'Map',timeline:'Timeline',organizers:'Organizers',trends:'Trends',
-  property:'Property'};
+  pride:'Pride Month 2026',ice:'ICE Detention Centers',map:'Map',timeline:'Timeline',organizers:'Organizers',
+  trends:'Trends',property:'Property'};
 
 function fmtBreadcrumbDate(generatedIso){
   if(!generatedIso) return '';
@@ -538,10 +558,11 @@ const Dashboard=({t,stats,data,onOpenProperty,onGoThreat})=>{
   return <div style={{padding:'24px 26px 26px',display:'flex',flexDirection:'column',gap:18}}>
     <Hero t={t} stats={stats} data={data} onDownloadCSV={buildCSV} onGoThreat={onGoThreat}/>
     {/* Stats */}
-    <div style={{display:'grid',gridTemplateColumns:'repeat(6, 1fr)',gap:12}}>
+    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(140px, 1fr))',gap:12}}>
       <StatCard t={t} label="General Events" value={stats.general} sub="72-hour window" color={t.accent}/>
       <StatCard t={t} label="No Kings" value={stats.noKings} sub="30-day window" color="#7c3aed"/>
       <StatCard t={t} label="Pride Month" value={stats.pride} sub="Until June 30" color="#ec4899"/>
+      <StatCard t={t} label="ICE Detention" value={stats.ice} sub="Near detention centers" color="#0891b2"/>
       <StatCard t={t} label="New (7 Days)" value={stats.newCount} sub="First seen &lt; 7 days ago" color={t.low}/>
       <StatCard t={t} label="Duplicates" value={stats.dupCount} sub="Near 2+ properties" color={t.high}/>
       <StatCard t={t} label="Recurring" value={stats.recCount} sub="Multiple timeslots" color={t.textMuted}/>
@@ -552,7 +573,7 @@ const Dashboard=({t,stats,data,onOpenProperty,onGoThreat})=>{
       {/* Proximity */}
       <div style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,padding:18}}>
         <div style={{...mono,fontSize:10,fontWeight:600,letterSpacing:'.12em',textTransform:'uppercase',color:t.textMuted,marginBottom:14}}>Proximity Breakdown</div>
-        {[{label:'General',b:stats.bands,color:t.accent},{label:'No Kings',b:stats.bandsNK,color:'#7c3aed'},{label:'Pride Month',b:stats.bandsPD,color:'#ec4899'}].map(g=>{
+        {[{label:'General',b:stats.bands,color:t.accent},{label:'No Kings',b:stats.bandsNK,color:'#7c3aed'},{label:'Pride Month',b:stats.bandsPD,color:'#ec4899'},{label:'ICE (to facility)',b:stats.bandsICE,color:'#0891b2'}].map(g=>{
           const total=g.b.red+g.b.amber+g.b.green||1;
           return <div key={g.label} style={{marginBottom:12}}>
             <div style={{fontSize:10,fontWeight:700,color:t.textSub,marginBottom:6,textTransform:'uppercase',letterSpacing:'.06em'}}>{g.label}</div>
@@ -868,7 +889,7 @@ const EventsTable=({t,rows,type,subtitle,onOpenProperty})=>{
       <div style={{overflowX:'auto',maxHeight:'calc(100vh - 220px)',overflowY:'auto'}}>
         <table style={{width:'100%',borderCollapse:'collapse'}}>
           <thead><tr>
-            <TH col="property_name">Property</TH>
+            <TH col="property_name">{type==='ice'?'Facility':'Property'}</TH>
             <TH col="event_title">Event</TH>
             <TH col="event_type">Type</TH>
             <TH col="event_date">Date / Time</TH>
@@ -938,9 +959,11 @@ const MapView=({t,markers})=>{
     (markers||[]).forEach(m=>{
       if(filter!=='all'&&m.threat!==filter) return;
       const c=colors[m.threat]||'#888';
-      const circle=L.circleMarker([m.lat,m.lon],{radius:6+m.count*2,fillColor:c,color:'#fff',
-        weight:1.5,fillOpacity:.85,opacity:.9}).addTo(map);
-      circle.bindPopup(`<div style="min-width:160px"><b>${m.name}</b><br/><span style="color:#888">${m.type||''}</span><br/><span style="font-size:10px;color:${c};font-weight:700">${m.dist.toFixed(2)} mi</span></div>`);
+      const isIce=m.stream==='ice';
+      const circle=L.circleMarker([m.lat,m.lon],{radius:6+m.count*2,fillColor:c,
+        color:isIce?'#0891b2':'#fff',weight:isIce?2.5:1.5,fillOpacity:.85,opacity:.95}).addTo(map);
+      const tag=isIce?`<br/><span style="font-size:9px;color:#0891b2;font-weight:700">● ICE · near detention center</span>`:'';
+      circle.bindPopup(`<div style="min-width:160px"><b>${m.name}</b><br/><span style="color:#888">${m.type||''}</span><br/><span style="font-size:10px;color:${c};font-weight:700">${m.dist.toFixed(2)} mi</span>${tag}</div>`);
     });
     mapInst.current=map;
     return ()=>{if(mapInst.current){mapInst.current.remove();mapInst.current=null;}};
@@ -1203,6 +1226,7 @@ const Trends=({t,data,stats})=>{
     {id:'general', label:'General Events',  color:t.accent,    total:stats?.general||0,  bands:stats?.bands||{red:0,amber:0,green:0},  new:(runs[runs.length-1]?.gen_new??null)},
     {id:'no_kings',label:'No Kings',        color:'#7c3aed',   total:stats?.noKings||0,  bands:stats?.bandsNK||{red:0,amber:0,green:0}, new:(runs[runs.length-1]?.nk_new??null)},
     {id:'pride',   label:'Pride Month',     color:'#ec4899',   total:stats?.pride||0,    bands:stats?.bandsPD||{red:0,amber:0,green:0}, new:(runs[runs.length-1]?.pd_new??null)},
+    {id:'ice',     label:'ICE Detention',   color:'#0891b2',   total:stats?.ice||0,      bands:stats?.bandsICE||{red:0,amber:0,green:0},new:(runs[runs.length-1]?.ice_new??null)},
   ];
 
   // ── Event type distribution ──────────────────────────────────
@@ -1227,6 +1251,7 @@ const Trends=({t,data,stats})=>{
         baseDataset('General',  runs.map(r=>r.gen_total??0),t.accent),
         baseDataset('No Kings', runs.map(r=>r.nk_total??0),'#7c3aed'),
         baseDataset('Pride',    runs.map(r=>r.pd_total??0),'#ec4899'),
+        baseDataset('ICE',      runs.map(r=>r.ice_total??0),'#0891b2'),
       ]},
       options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
         plugins:{
@@ -1270,7 +1295,7 @@ const Trends=({t,data,stats})=>{
     {/* ── Section 1: Stream snapshot ─────────────────────────── */}
     <div>
       {sectionHead('Current Snapshot','Live totals and proximity breakdown per stream')}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14}}>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:14}}>
         {streams.map(s=>{
           const tot=(s.bands.red||0)+(s.bands.amber||0)+(s.bands.green||0)||1;
           return <div key={s.id} style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,padding:18}}>
@@ -1590,6 +1615,7 @@ const App=()=>{
         {view==='events3'&&<EventsTable t={t} rows={data?.general?.rows} type="3day" subtitle={stats?.genSubtitle||''} onOpenProperty={openProperty}/>}
         {view==='nogo'&&<EventsTable t={t} rows={data?.no_kings?.rows} type="nogo" subtitle={stats?.nkSubtitle||''} onOpenProperty={openProperty}/>}
         {view==='pride'&&<EventsTable t={t} rows={data?.pride?.rows} type="pride" subtitle={stats?.pdSubtitle||''} onOpenProperty={openProperty}/>}
+        {view==='ice'&&<EventsTable t={t} rows={data?.ice?.rows} type="ice" subtitle={stats?.iceSubtitle||''}/>}
         {view==='map'&&<MapView t={t} markers={stats?.markers}/>}
         {view==='timeline'&&<Timeline t={t} data={data}/>}
         {view==='organizers'&&<Organizers t={t} orgs={stats?.orgs}/>}

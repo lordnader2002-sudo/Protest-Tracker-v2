@@ -52,6 +52,7 @@ from openpyxl.utils import get_column_letter
 # ── Configuration ─────────────────────────────────────────────────────────────
 
 PROPERTIES_CSV  = "properties.csv"
+DETENTION_CSV   = "detention_centers.csv"   # ICE detention facilities (same column shape)
 MOBILIZE_API    = "https://api.mobilize.us/v1/events"
 
 # Optional API key — set via env var MOBILIZE_API_KEY or --api-key argument.
@@ -62,8 +63,22 @@ SEARCH_RADIUS_MI  = 3    # hard filter: must be within this many miles of proper
 CLUSTER_RADIUS_MI = 35   # properties within this distance share one API query
 DAYS_GENERAL      = 3    # 3-day event window
 DAYS_NO_KINGS     = 30   # No Kings event window
+DAYS_ICE          = 30   # ICE detention protest window
 
 NO_KINGS_KEYWORDS = ["no kings", "nokings", "no_kings", "#nokings", "50501"]
+
+# ICE detention / immigration protest keywords. Phrase matches are plain substring
+# on lowercased text (unambiguous in context). The bare agency acronym is matched
+# only in its ORIGINAL uppercase form so it never fires on "police", "service",
+# "ice cream", "nice", etc. — the agency is written "ICE", the dessert is "ice".
+ICE_PHRASES = [
+    "ice detention", "detention center", "detention facility", "deportation",
+    "deport", "abolish ice", "anti-ice", "stop ice", "ice raid", "ice out",
+    "immigrant", "migrant", "immigration", "asylum", "undocumented", "sanctuary",
+    "no kids in cages", "no human is illegal", "families belong together",
+    "free them all", "not one more deportation", "dignidad",
+]
+ICE_ACRONYM_RE = re.compile(r"\bI\.?C\.?E\.?\b")   # uppercase 'ICE' / 'I.C.E.' only
 
 # Pride Month 2026 — collect events from "now" through end-of-day June 30 2026.
 PRIDE_END_DATE = datetime(2026, 6, 30, 23, 59, 59, tzinfo=_EASTERN)
@@ -95,6 +110,9 @@ HDR_PURPLE = PatternFill("solid", fgColor="5B2C8D")   # purple      (No Kings ti
 COL_PURPLE = PatternFill("solid", fgColor="7B5EA7")   # lighter purple (No Kings col hdrs)
 ALT_BLUE   = PatternFill("solid", fgColor="DCE6F1")   # pale blue   (even data rows)
 ALT_PURPLE = PatternFill("solid", fgColor="E8DEFF")   # pale purple (even No Kings rows)
+HDR_TEAL   = PatternFill("solid", fgColor="0E5C5B")   # dark teal   (ICE detention title)
+COL_TEAL   = PatternFill("solid", fgColor="2E8B89")   # medium teal (ICE col headers)
+ALT_TEAL   = PatternFill("solid", fgColor="D7EFEE")   # pale teal   (even ICE rows)
 WHITE_FILL = PatternFill("solid", fgColor="FFFFFF")
 
 # Distance-based row shading
@@ -397,6 +415,15 @@ def is_pride(event: dict) -> bool:
     return any(kw in text for kw in PRIDE_KEYWORDS)
 
 
+def is_ice_related(event: dict) -> bool:
+    """True if an event's title/description is about ICE / immigration / detention."""
+    raw = (event.get("title") or "") + " " + (event.get("description") or "")
+    if any(p in raw.lower() for p in ICE_PHRASES):
+        return True
+    # Backstop: the bare agency acronym, only when written in uppercase.
+    return bool(ICE_ACRONYM_RE.search(raw))
+
+
 def fetch_pride_tagged_ids() -> set[int]:
     """Scrape the public mobilize.us/pride/ feed for event IDs.
 
@@ -576,6 +603,86 @@ def cluster_query_params(cluster: list[dict]) -> tuple[str, int]:
 
 # ── Core collection logic ──────────────────────────────────────────────────────
 
+def _run_cluster_queries(clusters: list[list[dict]], now_ts: int, api_end: int,
+                         process_events) -> None:
+    """Fire one Mobilize.us query per cluster (first pass + rate-limit retry pass),
+    invoking ``process_events(events, cluster)`` for every successful fetch.
+
+    Shared by collect_events (company properties) and collect_ice_events
+    (ICE detention centers); both pass a closure that files rows into their
+    own lists.
+    """
+    retry_queue: list[list[dict]] = []   # clusters that hit 429 on first pass
+
+    bar = (_tqdm(clusters, unit="cluster", dynamic_ncols=True, colour="cyan")
+           if _HAS_TQDM else None)
+    cluster_iter = bar if bar is not None else clusters
+
+    for idx, cluster in enumerate(cluster_iter, 1):
+        zip_code, query_radius = cluster_query_params(cluster)
+        names = ", ".join(p["name"] for p in cluster[:3])
+        suffix = f" +{len(cluster) - 3} more" if len(cluster) > 3 else ""
+        label = f"zip={zip_code} r={query_radius}mi  {names}{suffix}"
+
+        if bar is not None:
+            bar.set_description(label)
+        else:
+            print(f"  [{idx:>3}/{len(clusters)}] {label}")
+
+        try:
+            events = fetch_events_for_zip(zip_code, query_radius, now_ts, api_end)
+            if bar is not None:
+                bar.set_postfix(events=len(events), refresh=True)
+            else:
+                print(f"           → {len(events)} event(s) returned")
+            process_events(events, cluster)
+        except RateLimitError:
+            print(f"\n    [429] Rate-limited — queued for retry pass.", file=sys.stderr)
+            retry_queue.append(cluster)
+
+    if bar is not None:
+        bar.close()
+
+    # ── Retry pass (60 s head-start, then escalating waits) ─────────────────
+    if retry_queue:
+        print(f"\n  {len(retry_queue)} cluster(s) rate-limited. "
+              f"Waiting 60s before retry pass …")
+        time.sleep(60)
+
+        for attempt_num in range(1, MAX_RETRIES + 1):
+            next_retry: list[list[dict]] = []
+
+            for cluster in retry_queue:
+                zip_code, query_radius = cluster_query_params(cluster)
+                names = cluster[0]["name"]
+                print(f"  [retry {attempt_num}/{MAX_RETRIES}] zip={zip_code}  ({names})")
+                try:
+                    events = fetch_events_for_zip(zip_code, query_radius, now_ts, api_end)
+                    print(f"           → {len(events)} event(s) returned")
+                    process_events(events, cluster)
+                    time.sleep(5)
+                except RateLimitError:
+                    next_retry.append(cluster)
+
+            retry_queue = next_retry
+            if not retry_queue:
+                print("  All retries succeeded.")
+                break
+
+            if attempt_num < MAX_RETRIES:
+                wait = 60 * attempt_num
+                print(f"  {len(retry_queue)} still rate-limited. "
+                      f"Waiting {wait}s before next retry …")
+                time.sleep(wait)
+
+        if retry_queue:
+            for cluster in retry_queue:
+                zip_code, _ = cluster_query_params(cluster)
+                for prop in cluster:
+                    print(f"  [FAILED] {prop['name']} (zip={prop['zip']}) — "
+                          f"no data after {MAX_RETRIES} retries.", file=sys.stderr)
+
+
 def collect_events(
     properties: list[dict],
 ) -> tuple[list[dict], list[dict], list[dict]]:
@@ -661,80 +768,9 @@ def collect_events(
                             seen_pride.add(pd_key)
                             pride_rows.append(row)
 
-    # ── First pass ────────────────────────────────────────────────────────────
-    retry_queue: list[list[dict]] = []   # clusters that hit 429 on first pass
+    # ── Query every cluster (handles rate-limit retries internally) ────────────
+    _run_cluster_queries(clusters, now_ts, api_end, process_events)
 
-    bar = (_tqdm(clusters, unit="cluster", dynamic_ncols=True, colour="cyan")
-           if _HAS_TQDM else None)
-    cluster_iter = bar if bar is not None else clusters
-
-    for idx, cluster in enumerate(cluster_iter, 1):
-        zip_code, query_radius = cluster_query_params(cluster)
-        names = ", ".join(p["name"] for p in cluster[:3])
-        suffix = f" +{len(cluster) - 3} more" if len(cluster) > 3 else ""
-        label = f"zip={zip_code} r={query_radius}mi  {names}{suffix}"
-
-        if bar is not None:
-            bar.set_description(label)
-        else:
-            print(f"  [{idx:>3}/{len(clusters)}] {label}")
-
-        try:
-            events = fetch_events_for_zip(zip_code, query_radius, now_ts, api_end)
-            if bar is not None:
-                bar.set_postfix(events=len(events), refresh=True)
-            else:
-                print(f"           → {len(events)} event(s) returned")
-            process_events(events, cluster)
-        except RateLimitError:
-            print(f"\n    [429] Rate-limited — queued for retry pass.", file=sys.stderr)
-            retry_queue.append(cluster)
-
-    if bar is not None:
-        bar.close()
-
-    # ── Retry pass (60 s head-start, then 5 s between attempts) ─────────────
-    if retry_queue:
-        print(f"\n  {len(retry_queue)} cluster(s) rate-limited. "
-              f"Waiting 60s before retry pass …")
-        time.sleep(60)
-
-        still_failed: list[str] = []
-        for attempt_num in range(1, MAX_RETRIES + 1):
-            next_retry: list[list[dict]] = []
-
-            for cluster in retry_queue:
-                zip_code, query_radius = cluster_query_params(cluster)
-                names = cluster[0]["name"]
-                print(f"  [retry {attempt_num}/{MAX_RETRIES}] zip={zip_code}  ({names})")
-                try:
-                    events = fetch_events_for_zip(zip_code, query_radius, now_ts, api_end)
-                    print(f"           → {len(events)} event(s) returned")
-                    process_events(events, cluster)
-                    time.sleep(5)
-                except RateLimitError:
-                    next_retry.append(cluster)
-
-            retry_queue = next_retry
-            if not retry_queue:
-                print("  All retries succeeded.")
-                break
-
-            if attempt_num < MAX_RETRIES:
-                wait = 60 * attempt_num
-                print(f"  {len(retry_queue)} still rate-limited. "
-                      f"Waiting {wait}s before next retry …")
-                time.sleep(wait)
-
-        if retry_queue:
-            for cluster in retry_queue:
-                zip_code, _ = cluster_query_params(cluster)
-                still_failed.append(zip_code)
-                for prop in cluster:
-                    print(f"  [FAILED] {prop['name']} (zip={prop['zip']}) — "
-                          f"no data after {MAX_RETRIES} retries.", file=sys.stderr)
-
-    total_checked = sum(stats.values())
     print(f"\n  ── Filter breakdown (event × property pairs) ──────────────────")
     print(f"     No coordinates (virtual/TBD) : {stats['no_coords']:>6}")
     print(f"     Outside 3-mile radius        : {stats['too_far']:>6}")
@@ -747,6 +783,61 @@ def collect_events(
     no_kings_rows.sort(key=lambda r: r["event_dt_sort"])
     pride_rows.sort(key=lambda r: r["event_dt_sort"])
     return general_rows, no_kings_rows, pride_rows
+
+
+def collect_ice_events(detention_centers: list[dict]) -> list[dict]:
+    """Collect immigration/ICE-related protests near ICE detention facilities.
+
+    Mirrors collect_events but anchors distance on the detention centers instead
+    of company properties, and keeps only events whose title/description match
+    the ICE keyword filter (is_ice_related).  Returns ice_rows sorted by start time.
+    """
+    if not detention_centers:
+        print("  No detention centers loaded — skipping ICE stream.\n")
+        return []
+
+    now_ts  = int(datetime.now(tz=timezone.utc).timestamp())
+    api_end = now_ts + DAYS_ICE * 86_400
+
+    clusters = cluster_properties(detention_centers)
+    print(f"  Clustered {len(detention_centers)} detention centers into "
+          f"{len(clusters)} geographic groups.\n")
+
+    ice_rows: list[dict] = []
+    seen_ice: set[tuple] = set()
+    stats = {"no_coords": 0, "too_far": 0, "passed": 0}
+
+    def _loc_key(row: dict):
+        lat, lon = row["event_lat"], row["event_lon"]
+        if lat != "" and lon != "":
+            return (round(float(lat), 4), round(float(lon), 4))
+        return row["event_location"]
+
+    def process_events(events: list[dict], cluster: list[dict]) -> None:
+        for ev in events:
+            if not is_ice_related(ev):
+                continue
+            etype_raw = (ev.get("event_type") or "OTHER").upper()
+            if etype_raw in EXCLUDE_TYPES:
+                continue
+            for center in cluster:
+                for row in expand_event(ev, center, stats):
+                    key = (_loc_key(row), row["event_dt_sort"], center["id"])
+                    if key not in seen_ice:
+                        seen_ice.add(key)
+                        ice_rows.append(row)
+                        stats["passed"] += 1
+
+    _run_cluster_queries(clusters, now_ts, api_end, process_events)
+
+    print(f"\n  ── ICE filter breakdown (event × facility pairs) ──────────────")
+    print(f"     No coordinates (virtual/TBD) : {stats['no_coords']:>6}")
+    print(f"     Outside {SEARCH_RADIUS_MI}-mile radius        : {stats['too_far']:>6}")
+    print(f"     ✓ Passed to ICE sheet        : {stats['passed']:>6}")
+    print(f"  ───────────────────────────────────────────────────────────────\n")
+
+    ice_rows.sort(key=lambda r: r["event_dt_sort"])
+    return ice_rows
 
 
 # ── Excel helpers ──────────────────────────────────────────────────────────────
@@ -1079,7 +1170,8 @@ def append_runs_log(summary: dict, path: str = RUNS_LOG_FILE) -> None:
 def save_cache(general_rows: list[dict], no_kings_rows: list[dict],
                pride_rows: list[dict] | None = None,
                path: str = CACHE_FILE,
-               first_seen_map: dict | None = None) -> None:
+               first_seen_map: dict | None = None,
+               ice_rows: list[dict] | None = None) -> None:
     def _serialize(rows):
         out = []
         for r in rows or []:
@@ -1094,12 +1186,14 @@ def save_cache(general_rows: list[dict], no_kings_rows: list[dict],
             "general":    _serialize(general_rows),
             "no_kings":   _serialize(no_kings_rows),
             "pride":      _serialize(pride_rows),
+            "ice":        _serialize(ice_rows),
             "first_seen": first_seen_map or {},
         }, f)
     print(f"  ✓ Data cache saved → {path}")
 
 
-def load_cache(path: str = CACHE_FILE) -> tuple[list[dict], list[dict], list[dict]]:
+def load_cache(path: str = CACHE_FILE
+               ) -> tuple[list[dict], list[dict], list[dict], list[dict]]:
     with open(path) as f:
         data = json.load(f)
 
@@ -1114,13 +1208,16 @@ def load_cache(path: str = CACHE_FILE) -> tuple[list[dict], list[dict], list[dic
 
     return (_deserialize(data.get("general", [])),
             _deserialize(data.get("no_kings", [])),
-            _deserialize(data.get("pride", [])))
+            _deserialize(data.get("pride", [])),
+            _deserialize(data.get("ice", [])))
 
 
 # ── Build workbook ─────────────────────────────────────────────────────────────
 
 def build_excel(general_rows: list[dict], no_kings_rows: list[dict],
-                pride_rows: list[dict], output_path: str) -> None:
+                pride_rows: list[dict], output_path: str,
+                ice_rows: list[dict] | None = None) -> None:
+    ice_rows = ice_rows or []
     wb = Workbook()
 
     # Summary sheet
@@ -1171,17 +1268,33 @@ def build_excel(general_rows: list[dict], no_kings_rows: list[dict],
                         f"  •  Source: Mobilize.us + mobilize.us/pride/ feed"),
     )
 
+    # ICE Detention sheet
+    ws_ice = wb.create_sheet("ICE Detention (30-Day)")
+    end_ice = (datetime.now() + timedelta(days=DAYS_ICE)).strftime("%B %d, %Y")
+    write_data_sheet(
+        ws_ice, ice_rows,
+        title_fill   = HDR_TEAL,
+        col_hdr_fill = COL_TEAL,
+        alt_fill     = ALT_TEAL,
+        sheet_title  = "Immigration / ICE Protests — Near Detention Centers (30-Day Window)",
+        subtitle     = (f"{now_str}  through  {end_ice}"
+                        f"  •  Within {SEARCH_RADIUS_MI} miles of an ICE detention facility"
+                        f"  •  Source: Mobilize.us"),
+    )
+
     wb.save(output_path)
     print(f"\n  ✓ Excel workbook saved → {output_path}")
 
 
 def update_trend_data(general_rows: list[dict], no_kings_rows: list[dict],
                        pride_rows: list[dict] | None = None,
-                       path: str = "trend_data.json") -> None:
+                       path: str = "trend_data.json",
+                       ice_rows: list[dict] | None = None) -> None:
     """Append a summary entry to trend_data.json for historical charting."""
     import json as _json
 
     pride_rows = pride_rows or []
+    ice_rows = ice_rows or []
 
     def _band_counts(rows):
         red   = sum(1 for r in rows if (float(r.get("distance_mi") or 9999)) < 1)
@@ -1194,6 +1307,7 @@ def update_trend_data(general_rows: list[dict], no_kings_rows: list[dict],
     gr, ga, gg, gn = _band_counts(general_rows)
     nr, na, ng, nn = _band_counts(no_kings_rows)
     pr, pa, pg, pn = _band_counts(pride_rows)
+    ir, ia, ig, in_ = _band_counts(ice_rows)
     entry = {
         "ts":        now.isoformat(timespec="seconds"),
         "label":     now.strftime("%b %d"),
@@ -1206,6 +1320,9 @@ def update_trend_data(general_rows: list[dict], no_kings_rows: list[dict],
         "pd_total":  len(pride_rows),
         "pd_new":    pn,
         "pd_red":    pr, "pd_amber":  pa, "pd_green":  pg,
+        "ice_total": len(ice_rows),
+        "ice_new":   in_,
+        "ice_red":   ir, "ice_amber": ia, "ice_green": ig,
     }
     try:
         with open(path) as f:
@@ -1221,12 +1338,15 @@ def update_trend_data(general_rows: list[dict], no_kings_rows: list[dict],
 
 def build_dashboard_json(general_rows: list[dict], no_kings_rows: list[dict],
                           pride_rows: list[dict] | None = None,
-                          output_path: str = "dashboard_data.json") -> None:
+                          output_path: str = "dashboard_data.json",
+                          ice_rows: list[dict] | None = None) -> None:
     import json as _json
     pride_rows = pride_rows or []
+    ice_rows = ice_rows or []
     now = datetime.now(_EASTERN)
     end_3d  = (now + timedelta(days=DAYS_GENERAL)).strftime("%B %d, %Y")
     end_30d = (now + timedelta(days=DAYS_NO_KINGS)).strftime("%B %d, %Y")
+    end_ice = (now + timedelta(days=DAYS_ICE)).strftime("%B %d, %Y")
     end_pd  = PRIDE_END_DATE.strftime("%B %d, %Y")
 
     _DASHBOARD_EXTRA = ["event_id", "event_lat", "event_lon", "prop_lat", "prop_lon",
@@ -1262,8 +1382,13 @@ def build_dashboard_json(general_rows: list[dict], no_kings_rows: list[dict],
             "subtitle": f"{now.strftime('%B %d, %Y')}  through  {end_pd}  •  Within {SEARCH_RADIUS_MI} miles",
             "rows": _clean(pride_rows),
         },
+        "ice": {
+            "title": "ICE Detention Center Protests",
+            "subtitle": f"{now.strftime('%B %d, %Y')}  through  {end_ice}  •  Within {SEARCH_RADIUS_MI} miles of a detention facility",
+            "rows": _clean(ice_rows),
+        },
     }
-    update_trend_data(general_rows, no_kings_rows, pride_rows)
+    update_trend_data(general_rows, no_kings_rows, pride_rows, ice_rows=ice_rows)
     try:
         with open("trend_data.json") as _tf:
             payload["trend_data"] = _json.load(_tf)
@@ -1304,6 +1429,10 @@ def main() -> None:
         "--cache", default=CACHE_FILE,
         help=f"Path to cache file (default: {CACHE_FILE})",
     )
+    ap.add_argument(
+        "--detention-csv", default=DETENTION_CSV,
+        help=f"Path to ICE detention centers CSV (default: {DETENTION_CSV})",
+    )
     args = ap.parse_args()
 
     # Allow CLI flag to override env var
@@ -1324,14 +1453,16 @@ def main() -> None:
             print(f"\n  ERROR: cache file not found: {args.cache}", file=sys.stderr)
             sys.exit(1)
         print(f"\nLoading cached data from {args.cache} …")
-        general_rows, no_kings_rows, pride_rows = load_cache(args.cache)
+        general_rows, no_kings_rows, pride_rows, ice_rows = load_cache(args.cache)
         print(f"  3-Day events   : {len(general_rows)} rows")
         print(f"  No Kings events: {len(no_kings_rows)} rows")
         print(f"  Pride events   : {len(pride_rows)} rows")
+        print(f"  ICE events     : {len(ice_rows)} rows")
         # Collapse in case this cache predates the timeslot-collapse feature
         general_rows  = collapse_recurring_timeslots(general_rows)
         no_kings_rows = collapse_recurring_timeslots(no_kings_rows)
         pride_rows    = collapse_recurring_timeslots(pride_rows)
+        ice_rows      = collapse_recurring_timeslots(ice_rows)
     else:
         print(f"  Properties CSV : {args.csv}")
         print(f"  Output file    : {args.output}")
@@ -1341,6 +1472,7 @@ def main() -> None:
         print(f"  General window : today + {DAYS_GENERAL} days")
         print(f"  No Kings window: today + {DAYS_NO_KINGS} days")
         print(f"  Pride window   : today → {PRIDE_END_DATE.strftime('%b %d, %Y')}")
+        print(f"  ICE window     : today + {DAYS_ICE} days (near detention centers)")
         print("=" * 64)
 
         properties = load_properties(args.csv)
@@ -1370,24 +1502,39 @@ def main() -> None:
 
         general_rows, no_kings_rows, pride_rows = collect_events(properties)
 
+        # ── ICE detention center protests (separate anchor set) ────────────
+        detention_centers = load_properties(args.detention_csv) \
+            if os.path.exists(args.detention_csv) else []
+        if detention_centers:
+            print(f"\nLoaded {len(detention_centers)} ICE detention centers.")
+            print("Querying Mobilize.us for immigration/ICE protests near facilities …\n")
+        else:
+            print(f"\n  No detention centers CSV at {args.detention_csv} — "
+                  f"ICE stream will be empty.")
+        ice_rows = collect_ice_events(detention_centers)
+
         print(f"\n{'─'*64}")
         print(f"  3-Day events found        : {len(general_rows)} property-event rows")
         print(f"  No Kings events found     : {len(no_kings_rows)} property-event rows")
         print(f"  Pride events found        : {len(pride_rows)} property-event rows")
+        print(f"  ICE events found          : {len(ice_rows)} facility-event rows")
         print(f"{'─'*64}")
 
         print("\nAnnotating event flags (new / duplicate / recurring) …")
         annotate_event_flags(general_rows,  first_seen_map, now_iso)
         annotate_event_flags(no_kings_rows, first_seen_map, now_iso)
         annotate_event_flags(pride_rows,    first_seen_map, now_iso)
+        annotate_event_flags(ice_rows,      first_seen_map, now_iso)
         new_g  = sum(1 for r in general_rows  if r.get("is_new"))
         new_nk = sum(1 for r in no_kings_rows if r.get("is_new"))
         new_pd = sum(1 for r in pride_rows    if r.get("is_new"))
+        new_ice = sum(1 for r in ice_rows     if r.get("is_new"))
         dup_g  = sum(1 for r in general_rows  if r.get("is_duplicate"))
         rec_g  = sum(1 for r in general_rows  if r.get("is_recurring"))
         print(f"  New events (3-day)        : {new_g}")
         print(f"  New events (No Kings)     : {new_nk}")
         print(f"  New events (Pride)        : {new_pd}")
+        print(f"  New events (ICE)          : {new_ice}")
         print(f"  Duplicates (3-day)        : {dup_g}")
         print(f"  Recurring  (3-day)        : {rec_g}")
 
@@ -1395,15 +1542,18 @@ def main() -> None:
         general_rows  = collapse_recurring_timeslots(general_rows)
         no_kings_rows = collapse_recurring_timeslots(no_kings_rows)
         pride_rows    = collapse_recurring_timeslots(pride_rows)
+        ice_rows      = collapse_recurring_timeslots(ice_rows)
         print(f"  3-Day rows after collapse   : {len(general_rows)}")
         print(f"  No Kings rows after collapse: {len(no_kings_rows)}")
         print(f"  Pride rows after collapse   : {len(pride_rows)}")
+        print(f"  ICE rows after collapse     : {len(ice_rows)}")
 
-        save_cache(general_rows, no_kings_rows, pride_rows, args.cache, first_seen_map)
+        save_cache(general_rows, no_kings_rows, pride_rows, args.cache,
+                   first_seen_map, ice_rows=ice_rows)
         save_ledger(first_seen_map)
 
         sample_titles: list[str] = []
-        for rows in (general_rows, no_kings_rows, pride_rows):
+        for rows in (general_rows, no_kings_rows, pride_rows, ice_rows):
             for r in rows:
                 if r.get("is_new") and len(sample_titles) < 5:
                     title = (r.get("event_title") or "").strip()[:80]
@@ -1411,21 +1561,23 @@ def main() -> None:
                         sample_titles.append(title)
         append_runs_log({
             "timestamp":         now_iso,
-            "total_events":      len(general_rows) + len(no_kings_rows) + len(pride_rows),
+            "total_events":      len(general_rows) + len(no_kings_rows) + len(pride_rows) + len(ice_rows),
             "general":           len(general_rows),
             "no_kings":          len(no_kings_rows),
             "pride":             len(pride_rows),
+            "ice":               len(ice_rows),
             "new_3day":          new_g,
             "new_no_kings":      new_nk,
             "new_pride":         new_pd,
-            "new_total":         new_g + new_nk + new_pd,
+            "new_ice":           new_ice,
+            "new_total":         new_g + new_nk + new_pd + new_ice,
             "sample_new_titles": sample_titles,
             "seeded_ids":        len(first_seen_map),
         })
 
     print("\nBuilding Excel workbook …")
-    build_excel(general_rows, no_kings_rows, pride_rows, args.output)
-    build_dashboard_json(general_rows, no_kings_rows, pride_rows)
+    build_excel(general_rows, no_kings_rows, pride_rows, args.output, ice_rows=ice_rows)
+    build_dashboard_json(general_rows, no_kings_rows, pride_rows, ice_rows=ice_rows)
     print("Done.\n")
 
 
