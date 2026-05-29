@@ -65,7 +65,13 @@ DAYS_GENERAL      = 3    # 3-day event window
 DAYS_NO_KINGS     = 30   # No Kings event window
 DAYS_ICE          = 30   # ICE detention protest window
 
-NO_KINGS_KEYWORDS = ["no kings", "nokings", "no_kings", "#nokings", "50501"]
+NO_KINGS_KEYWORDS = [
+    "no kings", "nokings", "no_kings", "#nokings", "50501",
+    # June 14 "Rise Up, Sing Out" action — Concert for the First Amendment
+    "rise up, sing out", "rise up sing out", "riseupsingout", "#riseupsingout",
+    "one million rising", "nokingsday", "#nokingsday",
+    "concert for the first amendment",
+]
 
 # ICE detention / immigration protest keywords. Phrase matches are plain substring
 # on lowercased text (unambiguous in context). The bare agency acronym is matched
