@@ -849,7 +849,7 @@ const EventsTable=({t,rows,type,subtitle,onOpenProperty})=>{
       })
       .sort((a,b)=>{
         let va=a[sortCol]??'',vb=b[sortCol]??'';
-        if(sortCol==='distance_mi'){va=parseFloat(va)||0;vb=parseFloat(vb)||0;}
+        if(sortCol==='distance_mi'||sortCol==='nearest_prop_dist_mi'){va=parseFloat(va)||0;vb=parseFloat(vb)||0;}
         else{va=String(va).toLowerCase();vb=String(vb).toLowerCase();}
         if(va<vb) return sortDir==='asc'?-1:1;
         if(va>vb) return sortDir==='asc'?1:-1;
@@ -894,7 +894,8 @@ const EventsTable=({t,rows,type,subtitle,onOpenProperty})=>{
             <TH col="event_type">Type</TH>
             <TH col="event_date">Date / Time</TH>
             <TH col="event_location">Location</TH>
-            <TH col="distance_mi" right>Distance</TH>
+            <TH col="distance_mi" right>{type==='ice'?'→ Facility':'Distance'}</TH>
+            {type==='ice'&&<TH col="nearest_prop_dist_mi" right>→ Store</TH>}
             <TH col="is_new">New</TH>
             <TH col="is_duplicate">Dup</TH>
             <TH col="is_recurring">Recur</TH>
@@ -902,6 +903,7 @@ const EventsTable=({t,rows,type,subtitle,onOpenProperty})=>{
           <tbody>
             {data.map((ev,i)=>{
               const dist=parseFloat(ev.distance_mi)||99;
+              const storeDist=type==='ice'?(parseFloat(ev.nearest_prop_dist_mi)||null):null;
               const bandBg=dist<1?`${t.critical}28`:dist<2?`${t.high}1a`:'transparent';
               const isNew=(ev.is_new||'').toLowerCase()==='yes';
               return <tr key={i}
@@ -923,12 +925,22 @@ const EventsTable=({t,rows,type,subtitle,onOpenProperty})=>{
                 <td style={{...tdBase,fontSize:11,maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ev.event_location}</td>
                 <td style={{...tdBase,...mono,fontWeight:700,textAlign:'right',
                   color:dist<1?t.critical:dist<2?t.high:t.low,fontSize:13}}>{dist.toFixed(2)}</td>
+                {type==='ice'&&<td style={{...tdBase,textAlign:'right'}}>
+                  {storeDist!=null
+                    ? <div>
+                        <div style={{...mono,fontWeight:700,fontSize:13,
+                          color:storeDist<1?t.critical:storeDist<2?t.high:t.low}}>{storeDist.toFixed(2)}</div>
+                        <div style={{fontSize:9,color:t.textMuted,maxWidth:120,overflow:'hidden',
+                          textOverflow:'ellipsis',whiteSpace:'nowrap',textAlign:'right'}}>{ev.nearest_prop_name}</div>
+                      </div>
+                    : <span style={{color:t.textMuted}}>—</span>}
+                </td>}
                 <td style={tdBase}>{flagCell(ev.is_new)}</td>
                 <td style={tdBase}>{flagCell(ev.is_duplicate)}</td>
                 <td style={tdBase}>{flagCell(ev.is_recurring)}</td>
               </tr>;
             })}
-            {data.length===0&&<tr><td colSpan={9} style={{padding:40,textAlign:'center',color:t.textMuted,fontSize:13}}>
+            {data.length===0&&<tr><td colSpan={type==='ice'?10:9} style={{padding:40,textAlign:'center',color:t.textMuted,fontSize:13}}>
               {search?`No events match "${search}"`:'No events in this window'}</td></tr>}
           </tbody>
         </table>
