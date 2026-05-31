@@ -846,7 +846,35 @@ def collect_ice_events(detention_centers: list[dict]) -> list[dict]:
     return ice_rows
 
 
-# ── Excel helpers ──────────────────────────────────────────────────────────────
+def annotate_nearest_property(ice_rows: list[dict], properties: list[dict]) -> None:
+    """Add nearest_prop_name / nearest_prop_dist_mi to each ICE row.
+
+    Uses the event's own lat/lon (not the facility centroid) so the distance
+    reflects how close the actual protest location is to a company property.
+    Virtual / no-coordinate rows get empty strings.
+    """
+    if not properties or not ice_rows:
+        return
+    for row in ice_rows:
+        try:
+            e_lat = float(row["event_lat"])
+            e_lon = float(row["event_lon"])
+        except (ValueError, TypeError):
+            row["nearest_prop_name"] = ""
+            row["nearest_prop_dist_mi"] = ""
+            continue
+        best_dist: float | None = None
+        best_name = ""
+        for prop in properties:
+            d = haversine(e_lat, e_lon, prop["lat"], prop["lon"])
+            if best_dist is None or d < best_dist:
+                best_dist = d
+                best_name = prop["name"]
+        row["nearest_prop_name"] = best_name
+        row["nearest_prop_dist_mi"] = round(best_dist, 2) if best_dist is not None else ""
+
+
+
 
 def _cell(ws, row: int, col: int, value,
           font=None, fill=None, align=None, border=None, hyperlink=None):
@@ -1359,7 +1387,7 @@ def build_dashboard_json(general_rows: list[dict], no_kings_rows: list[dict],
                         "sponsor_name", "sponsor_email", "sponsor_phone", "sponsor_website",
                         "featured_image_url", "description", "tags", "is_virtual",
                         "accessibility_notes", "all_timeslots", "rsvp_count",
-                        "first_seen_iso"]
+                        "first_seen_iso", "nearest_prop_name", "nearest_prop_dist_mi"]
 
     def _clean(rows):
         out = []
@@ -1518,6 +1546,7 @@ def main() -> None:
             print(f"\n  No detention centers CSV at {args.detention_csv} — "
                   f"ICE stream will be empty.")
         ice_rows = collect_ice_events(detention_centers)
+        annotate_nearest_property(ice_rows, properties)
 
         print(f"\n{'─'*64}")
         print(f"  3-Day events found        : {len(general_rows)} property-event rows")
