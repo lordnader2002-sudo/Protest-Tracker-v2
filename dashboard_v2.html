@@ -40,7 +40,7 @@ const {useState,useEffect,useRef,useMemo,useCallback} = React;
    loading the public dashboard_data.json with no login (local-dev mode).   */
 const SUPABASE_URL      = "https://dkeaeprelbhdabnvcsqc.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRrZWFlcHJlbGJoZGFibnZjc3FjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0NTQ5MzcsImV4cCI6MjA5NjAzMDkzN30.Ehir5laOAKidIO8WU2yl2IoAslNqtLC3c6TVu4KJl_o";
-const SHARED_EMAIL      = "dashboard@a-becker.me";   // the single shared login account
+const SHARED_EMAIL      = "lordnader2002@gmail.com";  // the single shared login account
 const DATA_BUCKET       = "dashboard";               // private Storage bucket
 const DATA_OBJECT       = "dashboard_data.json";
 
@@ -1825,7 +1825,7 @@ const Login=({t,auth})=>{
     e.preventDefault();setBusy(true);setErr('');
     const {error}=await auth.login(pw);
     setBusy(false);
-    if(error) setErr('Incorrect password');
+    if(error) setErr(error.message||'Incorrect password');
   };
   return <div style={{height:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:t.bg}}>
     <form onSubmit={submit} style={{width:320,padding:28,background:t.surface,border:`1px solid ${t.border}`,borderRadius:10,
