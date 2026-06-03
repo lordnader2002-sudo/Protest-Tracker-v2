@@ -70,12 +70,27 @@ jobs:
           workflow_conclusion: success
           if_no_artifact_found: warn
 
-      - name: Fetch previous dashboard, ledger, and runs log from gh-pages
+      - name: Fetch previous dashboard, ledger, and runs log
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: |
+          # Previous dashboard: from the private Supabase bucket once configured
+          # (real-lock mode); otherwise fall back to the public gh-pages copy.
+          if [ -n "$SUPABASE_URL" ] && [ -n "$SUPABASE_SERVICE_KEY" ]; then
+            curl -fsS "${SUPABASE_URL}/storage/v1/object/dashboard/dashboard_data.json" \
+              -H "Authorization: Bearer ${SUPABASE_SERVICE_KEY}" \
+              -o dashboard_data_prev.json \
+              && echo "  Loaded previous dashboard_data.json from Supabase ($(wc -c < dashboard_data_prev.json) bytes)" \
+              || echo "  No previous dashboard in Supabase — all events will be treated as new"
+          else
+            git fetch origin gh-pages --depth=1 2>/dev/null || true
+            git show origin/gh-pages:dashboard_data.json > dashboard_data_prev.json 2>/dev/null \
+              && echo "  Loaded previous dashboard_data.json from gh-pages ($(wc -c < dashboard_data_prev.json) bytes)" \
+              || echo "  No previous gh-pages dashboard found — all events will be treated as new"
+          fi
+          # Ledger + runs log stay on gh-pages (IDs/counts only, no event details)
           git fetch origin gh-pages --depth=1 2>/dev/null || true
-          git show origin/gh-pages:dashboard_data.json > dashboard_data_prev.json 2>/dev/null \
-            && echo "  Loaded previous dashboard_data.json ($(wc -c < dashboard_data_prev.json) bytes)" \
-            || echo "  No previous gh-pages dashboard found — all events will be treated as new"
           git show origin/gh-pages:first_seen_ledger.json > first_seen_ledger.json 2>/dev/null \
             && echo "  Loaded first_seen_ledger.json ($(wc -c < first_seen_ledger.json) bytes)" \
             || echo "  No previous ledger found — starting fresh"
@@ -108,19 +123,52 @@ jobs:
           path: "protest_tracker_*.xlsx"
           retention-days: 30
 
+      # ── Upload event data + report to the PRIVATE Supabase bucket ─────────
+      # (real-lock mode). The data never touches the public gh-pages branch.
+      - name: Upload data to Supabase (full run)
+        if: github.event.inputs.mode != 'regen'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_KEY" ]; then
+            echo "  Supabase secrets not set — skipping upload (data will publish publicly as fallback)."
+            exit 0
+          fi
+          cp protest_tracker_*.xlsx protest_tracker_latest.xlsx 2>/dev/null || true
+          echo "  Uploading dashboard_data.json to private bucket …"
+          curl -fsS -X POST "${SUPABASE_URL}/storage/v1/object/dashboard/dashboard_data.json" \
+            -H "Authorization: Bearer ${SUPABASE_SERVICE_KEY}" \
+            -H "x-upsert: true" -H "Content-Type: application/json" \
+            --data-binary @dashboard_data.json >/dev/null
+          if [ -f protest_tracker_latest.xlsx ]; then
+            echo "  Uploading protest_tracker_latest.xlsx to private bucket …"
+            curl -fsS -X POST "${SUPABASE_URL}/storage/v1/object/dashboard/protest_tracker_latest.xlsx" \
+              -H "Authorization: Bearer ${SUPABASE_SERVICE_KEY}" \
+              -H "x-upsert: true" \
+              -H "Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" \
+              --data-binary @protest_tracker_latest.xlsx >/dev/null
+          fi
+          echo "  ✓ Supabase upload complete."
+
       # ── Deploy dashboard to GitHub Pages ──────────────────────────────────
       - name: Stage Pages assets
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
         run: |
           mkdir -p _site
-          # v2 dashboard is served as the root index.html; classic stays at classic.html
+          # v2 dashboard (code only — not sensitive) is served as the root index.html
           cp dashboard_v2.html _site/index.html
-          cp index.html _site/classic.html
-          cp dashboard_data.json _site/
-          # Durable first_seen ledger and append-only run history committed to gh-pages
+          # Event data + Excel are published publicly ONLY when Supabase isn't
+          # configured yet (fallback). Once secrets are set they live in the
+          # private bucket and never reach the public gh-pages branch.
+          if [ -z "$SUPABASE_URL" ]; then
+            cp dashboard_data.json _site/
+            cp protest_tracker_*.xlsx _site/protest_tracker_latest.xlsx 2>/dev/null || true
+          fi
+          # Durable first_seen ledger and append-only run history (IDs/counts only)
           cp first_seen_ledger.json _site/ 2>/dev/null || true
           cp runs_log.jsonl _site/ 2>/dev/null || true
-          # Copy Excel with a fixed name so the dashboard download link works
-          cp protest_tracker_*.xlsx _site/protest_tracker_latest.xlsx 2>/dev/null || true
 
       - name: Deploy to GitHub Pages
         env:
