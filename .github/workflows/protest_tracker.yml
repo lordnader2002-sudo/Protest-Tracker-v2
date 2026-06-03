@@ -75,10 +75,14 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: |
+          # Normalize URL: tolerate a pasted REST endpoint / trailing slash
+          # (e.g. ".../rest/v1/" → base host) so storage paths stay valid.
+          SUPABASE_URL="${SUPABASE_URL%/}"; SUPABASE_URL="${SUPABASE_URL%/rest/v1}"; SUPABASE_URL="${SUPABASE_URL%/}"
           # Previous dashboard: from the private Supabase bucket once configured
           # (real-lock mode); otherwise fall back to the public gh-pages copy.
           if [ -n "$SUPABASE_URL" ] && [ -n "$SUPABASE_SERVICE_KEY" ]; then
             curl -fsS "${SUPABASE_URL}/storage/v1/object/dashboard/dashboard_data.json" \
+              -H "apikey: ${SUPABASE_SERVICE_KEY}" \
               -H "Authorization: Bearer ${SUPABASE_SERVICE_KEY}" \
               -o dashboard_data_prev.json \
               && echo "  Loaded previous dashboard_data.json from Supabase ($(wc -c < dashboard_data_prev.json) bytes)" \
@@ -135,15 +139,19 @@ jobs:
             echo "  Supabase secrets not set — skipping upload (data will publish publicly as fallback)."
             exit 0
           fi
+          # Normalize URL: tolerate a pasted REST endpoint / trailing slash.
+          SUPABASE_URL="${SUPABASE_URL%/}"; SUPABASE_URL="${SUPABASE_URL%/rest/v1}"; SUPABASE_URL="${SUPABASE_URL%/}"
           cp protest_tracker_*.xlsx protest_tracker_latest.xlsx 2>/dev/null || true
           echo "  Uploading dashboard_data.json to private bucket …"
           curl -fsS -X POST "${SUPABASE_URL}/storage/v1/object/dashboard/dashboard_data.json" \
+            -H "apikey: ${SUPABASE_SERVICE_KEY}" \
             -H "Authorization: Bearer ${SUPABASE_SERVICE_KEY}" \
             -H "x-upsert: true" -H "Content-Type: application/json" \
             --data-binary @dashboard_data.json >/dev/null
           if [ -f protest_tracker_latest.xlsx ]; then
             echo "  Uploading protest_tracker_latest.xlsx to private bucket …"
             curl -fsS -X POST "${SUPABASE_URL}/storage/v1/object/dashboard/protest_tracker_latest.xlsx" \
+              -H "apikey: ${SUPABASE_SERVICE_KEY}" \
               -H "Authorization: Bearer ${SUPABASE_SERVICE_KEY}" \
               -H "x-upsert: true" \
               -H "Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" \
