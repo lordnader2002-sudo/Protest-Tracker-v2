@@ -1430,7 +1430,8 @@ const Tracked=({t,tracked})=>{
           <div style={{flex:1,minWidth:0}}>
             <div style={{display:'flex',alignItems:'baseline',gap:8,flexWrap:'wrap'}}>
               <span style={{fontSize:14,fontWeight:600,color:t.text}}>{s.event_title||'Untitled event'}</span>
-              {s.event_url&&<a href={s.event_url} target="_blank" rel="noopener" style={{fontSize:10,color:accent,textDecoration:'none'}}>open ↗</a>}
+              {s.event_url&&<a href={s.event_url} target="_blank" rel="noopener" style={{fontSize:12,fontWeight:700,color:accent,textDecoration:'none',
+                padding:'2px 9px',borderRadius:5,border:`1px solid ${accent}66`,background:`${accent}1a`,whiteSpace:'nowrap'}}>Open ↗</a>}
             </div>
             <div style={{fontSize:11,color:t.textMuted,marginTop:3,display:'flex',gap:10,flexWrap:'wrap',alignItems:'center'}}>
               {s.event_type&&<span>{s.event_type}</span>}
