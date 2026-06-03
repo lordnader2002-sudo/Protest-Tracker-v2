@@ -1825,7 +1825,7 @@ const Login=({t,auth})=>{
     e.preventDefault();setBusy(true);setErr('');
     const {error}=await auth.login(pw);
     setBusy(false);
-    if(error) setErr('Incorrect password');
+    if(error) setErr(error.message||'Incorrect password');
   };
   return <div style={{height:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:t.bg}}>
     <form onSubmit={submit} style={{width:320,padding:28,background:t.surface,border:`1px solid ${t.border}`,borderRadius:10,
