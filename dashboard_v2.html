@@ -13,6 +13,7 @@
 <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
   html,body,#root{height:100%;overflow:hidden}
@@ -30,6 +31,23 @@
 <div id="root"></div>
 <script type="text/babel">
 const {useState,useEffect,useRef,useMemo,useCallback} = React;
+
+/* ═══ SUPABASE CONFIG ══════════════════════════════════════════ */
+/* Fill these three values after creating your Supabase project
+   (Settings → API).  The anon key is safe to expose publicly — access is
+   controlled by Auth + Row-Level-Security, so the SHARED password is the
+   real gate.  Until these are filled with real values the app falls back to
+   loading the public dashboard_data.json with no login (local-dev mode).   */
+const SUPABASE_URL      = "https://YOUR-PROJECT.supabase.co";
+const SUPABASE_ANON_KEY = "YOUR-ANON-PUBLIC-KEY";
+const SHARED_EMAIL      = "dashboard@a-becker.me";   // the single shared login account
+const DATA_BUCKET       = "dashboard";               // private Storage bucket
+const DATA_OBJECT       = "dashboard_data.json";
+
+const SB_READY = !SUPABASE_URL.includes("YOUR-PROJECT") && !SUPABASE_ANON_KEY.includes("YOUR-ANON");
+const sb = (SB_READY && window.supabase)
+  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
 
 /* ═══ TWEAKS ═══════════════════════════════════════════════════ */
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{"variant":"midnight"}/*EDITMODE-END*/;
@@ -91,6 +109,8 @@ const ICON_PATHS={
   threat:"M12 22c5-1 9-5 9-10V5l-9-3-9 3v7c0 5 4 9 9 10zM12 8v4M12 16h.01",
   property:"M3 21h18M5 21V7l8-4v18M19 21V11l-6-4",
   ice:"M3 21h18M5 21V8l7-4 7 4v13M9 21v-4h6v4M8 11h.01M12 11h.01M16 11h.01M8 14h.01M12 14h.01M16 14h.01",
+  tracked:"M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11",
+  logout:"M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9",
   search:"M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z",
   switchDash:"M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7",
   sun:"M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41M12 7a5 5 0 100 10 5 5 0 000-10z",
@@ -101,16 +121,114 @@ const Icon=({id,size=16})=><svg width={size} height={size} viewBox="0 0 24 24" f
   <path d={ICON_PATHS[id]}/></svg>;
 
 /* ═══ DATA LOADER ══════════════════════════════════════════════ */
-function useData(){
+/* When Supabase is configured, the dashboard data lives in a PRIVATE bucket
+   and is downloaded with the authenticated session (so it 404s for the public).
+   `authed` gates the fetch — we only pull data once the user is logged in.
+   Without Supabase configured we fall back to the public file for local dev. */
+function useData(authed){
   const [data,setData]=useState(null);
   const [err,setErr]=useState(null);
   useEffect(()=>{
-    fetch('dashboard_data.json').then(r=>{
-      if(!r.ok) throw new Error(`HTTP ${r.status}`);
-      return r.json();
-    }).then(d=>setData(d)).catch(e=>setErr(e.message));
-  },[]);
+    let cancelled=false;
+    async function load(){
+      try{
+        let json;
+        if(sb){
+          if(!authed) return;                 // wait until logged in
+          const {data:blob,error}=await sb.storage.from(DATA_BUCKET).download(DATA_OBJECT);
+          if(error) throw new Error(error.message||'download failed');
+          json=JSON.parse(await blob.text());
+        }else{
+          const r=await fetch('dashboard_data.json');
+          if(!r.ok) throw new Error(`HTTP ${r.status}`);
+          json=await r.json();
+        }
+        if(!cancelled) setData(json);
+      }catch(e){ if(!cancelled) setErr(e.message); }
+    }
+    load();
+    return ()=>{cancelled=true;};
+  },[authed]);
   return {data,err};
+}
+
+/* ═══ AUTH ═════════════════════════════════════════════════════ */
+/* Single shared-password gate via Supabase Auth. When Supabase is not
+   configured the gate is disabled (local-dev mode) and `authed` is true. */
+function useAuth(){
+  const [session,setSession]=useState(undefined);   // undefined = still loading
+  useEffect(()=>{
+    if(!sb){ setSession(null); return; }
+    sb.auth.getSession().then(({data})=>setSession(data.session||null));
+    const {data:sub}=sb.auth.onAuthStateChange((_e,s)=>setSession(s));
+    return ()=>sub.subscription.unsubscribe();
+  },[]);
+  return {
+    session,
+    authed:  sb ? !!session : true,
+    loading: sb ? session===undefined : false,
+    login:   (password)=>sb.auth.signInWithPassword({email:SHARED_EMAIL,password}),
+    logout:  ()=>sb&&sb.auth.signOut(),
+  };
+}
+
+/* ═══ TRACKED PRODUCTS STORE ═══════════════════════════════════ */
+/* Offline-first: localStorage cache for instant UI + best-effort cloud sync.
+   Keyed by event_id (whole-event granularity) so checking any row marks the
+   event everywhere it appears. Never auto-removed — manual uncheck only. */
+const STREAM_LABEL={'3day':'General','nogo':'No Kings',pride:'Pride',ice:'ICE',tracked:''};
+function eventKey(ev){
+  return (ev.event_id && String(ev.event_id))
+    || `${ev.event_title||''}|${ev.event_date||ev.event_dt_sort||''}`;
+}
+function useTracked(authed){
+  const LS_KEY='pt2_tracked';
+  const [items,setItems]=useState(()=>{try{return JSON.parse(localStorage.getItem(LS_KEY)||'{}')}catch{return{}}});
+  const noteTimers=useRef({});
+  const save=(next)=>{setItems(next);try{localStorage.setItem(LS_KEY,JSON.stringify(next))}catch{}};
+
+  // Pull the authoritative list from the cloud once logged in.
+  useEffect(()=>{
+    if(!sb||!authed) return;
+    let cancelled=false;
+    (async()=>{
+      const {data,error}=await sb.from('tracked_events').select('*');
+      if(error||cancelled||!data) return;
+      const map={};
+      for(const r of data) map[r.event_id]={event_id:r.event_id,snapshot:r.snapshot||{},
+        note:r.note||'',streams:r.streams||[],checked_at:r.checked_at};
+      save(map);
+    })();
+    return ()=>{cancelled=true;};
+  },[authed]);
+
+  const toggle=(ev,type)=>{
+    const k=eventKey(ev);
+    const next={...items};
+    if(next[k]){
+      delete next[k]; save(next);
+      if(sb) sb.from('tracked_events').delete().eq('event_id',k).then(()=>{});
+    }else{
+      const stream=STREAM_LABEL[type]||'';
+      const rec={event_id:k,snapshot:ev,note:'',streams:stream?[stream]:[],checked_at:new Date().toISOString()};
+      next[k]=rec; save(next);
+      if(sb) sb.from('tracked_events').upsert({...rec,updated_at:rec.checked_at}).then(()=>{});
+    }
+  };
+
+  const setNote=(k,text)=>{
+    const cur=items[k]; if(!cur) return;
+    save({...items,[k]:{...cur,note:text}});
+    if(sb){
+      clearTimeout(noteTimers.current[k]);
+      noteTimers.current[k]=setTimeout(()=>{
+        sb.from('tracked_events').update({note:text,updated_at:new Date().toISOString()}).eq('event_id',k).then(()=>{});
+      },600);
+    }
+  };
+
+  const ids=useMemo(()=>new Set(Object.keys(items)),[items]);
+  return {items,ids,toggle,setNote,has:(ev)=>ids.has(eventKey(ev)),count:ids.size};
 }
 
 function parseIso(s){if(!s) return 0;const t=new Date(s).getTime();return isNaN(t)?0:t;}
@@ -308,6 +426,7 @@ const NAV=[
   {id:'nogo',label:'No Kings Events'},
   {id:'pride',label:'Pride Month 2026'},
   {id:'ice',label:'ICE Detention'},
+  {id:'tracked',label:'Tracked'},
   {section:'ANALYTICS'},
   {id:'map',label:'Map'},
   {id:'timeline',label:'Timeline'},
@@ -315,7 +434,8 @@ const NAV=[
   {id:'trends',label:'Trends'},
 ];
 
-function navBadge(id,stats){
+function navBadge(id,stats,trackedCount){
+  if(id==='tracked') return trackedCount||null;
   if(!stats) return null;
   switch(id){
     case 'dashboard':  return null;
@@ -331,7 +451,7 @@ function navBadge(id,stats){
   }
 }
 
-const Sidebar=({t,view,setView,stats,version})=><aside style={{
+const Sidebar=({t,view,setView,stats,version,trackedCount,onLogout})=><aside style={{
   width:224,flexShrink:0,display:'flex',flexDirection:'column',
   background:t.sidebar,borderRight:`1px solid ${t.sidebarBorder}`,height:'100vh'}}>
   {/* Brand */}
@@ -355,7 +475,7 @@ const Sidebar=({t,view,setView,stats,version})=><aside style={{
         ...mono,fontSize:9.5,fontWeight:600,letterSpacing:'.14em',
         color:`${t.sidebarText}b3`,padding:'14px 18px 6px'}}>{item.section}</div>;
       const active=view===item.id;
-      const badge=navBadge(item.id,stats);
+      const badge=navBadge(item.id,stats,trackedCount);
       return <button key={item.id} onClick={()=>setView(item.id)} style={{
         width:'calc(100% - 12px)',margin:'0 6px',display:'flex',alignItems:'center',gap:10,
         padding:'8px 12px',borderRadius:6,
@@ -378,21 +498,21 @@ const Sidebar=({t,view,setView,stats,version})=><aside style={{
   </nav>
   {/* Footer */}
   <div style={{padding:'10px 14px 14px',borderTop:`1px solid ${t.sidebarBorder}`}}>
-    <a href="classic.html" style={{display:'flex',alignItems:'center',gap:8,
-      textDecoration:'none',color:t.sidebarText,fontSize:11.5,padding:'7px 8px',borderRadius:5,
-      transition:'background .12s,color .12s'}}
+    {onLogout&&<button onClick={onLogout} style={{width:'100%',display:'flex',alignItems:'center',gap:8,
+      background:'transparent',border:'none',cursor:'pointer',color:t.sidebarText,fontSize:11.5,
+      padding:'7px 8px',borderRadius:5,textAlign:'left',transition:'background .12s,color .12s'}}
       onMouseEnter={e=>{e.currentTarget.style.color=t.sidebarHead;e.currentTarget.style.background=t.sidebarHover;}}
       onMouseLeave={e=>{e.currentTarget.style.color=t.sidebarText;e.currentTarget.style.background='transparent';}}>
-      <Icon id="switchDash" size={13}/>
-      <span>Classic Dashboard</span>
-    </a>
+      <Icon id="logout" size={13}/>
+      <span>Log out</span>
+    </button>}
   </div>
 </aside>;
 
 /* ═══ TOPBAR ═══════════════════════════════════════════════════ */
 const LABELS={dashboard:'Summary',threat:'Threat Watch',events3:'General Events',nogo:'No Kings Events',
-  pride:'Pride Month 2026',ice:'ICE Detention Centers',map:'Map',timeline:'Timeline',organizers:'Organizers',
-  trends:'Trends',property:'Property'};
+  pride:'Pride Month 2026',ice:'ICE Detention Centers',tracked:'Tracked Products',map:'Map',timeline:'Timeline',
+  organizers:'Organizers',trends:'Trends',property:'Property'};
 
 function fmtBreadcrumbDate(generatedIso){
   if(!generatedIso) return '';
@@ -829,8 +949,22 @@ const EventModal=({t,ev,onClose})=>{
   </div>;
 };
 
+/* ═══ TRACK CHECKBOX ═══════════════════════════════════════════ */
+/* Marks whether an intelligence product has been created & disseminated for
+   an event. Checked state is whole-event (keyed by event_id). */
+const TrackCheck=({t,checked,onToggle,title})=>(
+  <span onClick={e=>{e.stopPropagation();onToggle();}} title={title||(checked?'Product created — click to unmark':'Mark product created')}
+    style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:18,height:18,
+    borderRadius:4,cursor:'pointer',flexShrink:0,
+    border:`1.5px solid ${checked?t.low:t.textMuted}`,
+    background:checked?t.low:'transparent',transition:'all .12s ease'}}>
+    {checked&&<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#0a0e14"
+      strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5L20 6"/></svg>}
+  </span>
+);
+
 /* ═══ EVENTS TABLE ═════════════════════════════════════════════ */
-const EventsTable=({t,rows,type,subtitle,onOpenProperty})=>{
+const EventsTable=({t,rows,type,subtitle,onOpenProperty,tracked})=>{
   const [sortCol,setSortCol]=useState('distance_mi');
   const [sortDir,setSortDir]=useState('asc');
   const [search,setSearch]=useState('');
@@ -889,6 +1023,9 @@ const EventsTable=({t,rows,type,subtitle,onOpenProperty})=>{
       <div style={{overflowX:'auto',maxHeight:'calc(100vh - 220px)',overflowY:'auto'}}>
         <table style={{width:'100%',borderCollapse:'collapse'}}>
           <thead><tr>
+            <th title="Product created & disseminated" style={{padding:'8px 10px',textAlign:'center',fontSize:9,fontWeight:700,
+              letterSpacing:'.1em',textTransform:'uppercase',color:t.textMuted,borderBottom:`2px solid ${t.border}`,
+              whiteSpace:'nowrap',background:`${t.border}44`,position:'sticky',top:0,zIndex:2,width:36}}>✓</th>
             <TH col="property_name">{type==='ice'?'Facility':'Property'}</TH>
             <TH col="event_title">Event</TH>
             <TH col="event_type">Type</TH>
@@ -910,6 +1047,9 @@ const EventsTable=({t,rows,type,subtitle,onOpenProperty})=>{
                 onMouseEnter={()=>setHovered(i)} onMouseLeave={()=>setHovered(null)}
                 onClick={()=>setSelected(ev)}
                 style={{background:hovered===i?`${t.accent}0a`:bandBg,transition:'background .1s',fontWeight:isNew?600:400,cursor:'pointer'}}>
+                <td style={{...tdBase,textAlign:'center',verticalAlign:'middle'}}>
+                  {tracked&&<TrackCheck t={t} checked={tracked.has(ev)} onToggle={()=>tracked.toggle(ev,type)}/>}
+                </td>
                 <td style={{...tdBase,fontWeight:500,maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
                   <span onClick={e=>{e.stopPropagation();onOpenProperty&&onOpenProperty(ev.property_name);}}
                     style={{cursor:onOpenProperty?'pointer':'default'}}
@@ -940,7 +1080,7 @@ const EventsTable=({t,rows,type,subtitle,onOpenProperty})=>{
                 <td style={tdBase}>{flagCell(ev.is_recurring)}</td>
               </tr>;
             })}
-            {data.length===0&&<tr><td colSpan={type==='ice'?10:9} style={{padding:40,textAlign:'center',color:t.textMuted,fontSize:13}}>
+            {data.length===0&&<tr><td colSpan={type==='ice'?11:10} style={{padding:40,textAlign:'center',color:t.textMuted,fontSize:13}}>
               {search?`No events match "${search}"`:'No events in this window'}</td></tr>}
           </tbody>
         </table>
@@ -1246,6 +1386,72 @@ const Organizers=({t,orgs})=>{
     </div>}
     {!filtered.length&&<div style={{padding:40,textAlign:'center',color:t.textMuted,fontSize:12}}>No organizers match "{search}"</div>}
     <OrganizerModal t={t} org={selected} onClose={()=>setSelected(null)}/>
+  </div>;
+};
+
+/* ═══ TRACKED PRODUCTS ═════════════════════════════════════════ */
+const STREAM_COLOR={General:null,'No Kings':'#7c3aed',Pride:'#ec4899',ICE:'#0891b2'};
+const Tracked=({t,tracked})=>{
+  const accent=t.accent;
+  const list=useMemo(()=>Object.values(tracked.items)
+    .sort((a,b)=>(b.checked_at||'').localeCompare(a.checked_at||'')),[tracked.items]);
+
+  const exportCsv=()=>{
+    const esc=v=>`"${String(v??'').replace(/"/g,'""')}"`;
+    const head=['event_id','title','type','date','property','location','distance_mi','streams','marked_at','note','url'];
+    const lines=[head.join(',')];
+    list.forEach(it=>{const s=it.snapshot||{};lines.push([it.event_id,s.event_title,s.event_type,s.event_date,
+      s.property_name,s.event_location,s.distance_mi,(it.streams||[]).join('|'),it.checked_at,it.note,s.event_url].map(esc).join(','));});
+    const url=URL.createObjectURL(new Blob([lines.join('\n')],{type:'text/csv'}));
+    const a=document.createElement('a');a.href=url;a.download=`tracked_products_${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(url);
+  };
+
+  return <div style={{padding:22}}>
+    <div style={{display:'flex',alignItems:'flex-end',justifyContent:'space-between',gap:16,marginBottom:14,flexWrap:'wrap'}}>
+      <div>
+        <h2 style={{fontSize:17,fontWeight:700,color:t.text,marginBottom:4}}>Tracked Products</h2>
+        <p style={{fontSize:11,color:t.textMuted}}>Events you've marked as having a disseminated product · {list.length} tracked · persists until you uncheck</p>
+      </div>
+      {list.length>0&&<button onClick={exportCsv} style={{...mono,fontSize:10,fontWeight:700,padding:'8px 14px',borderRadius:6,
+        cursor:'pointer',textTransform:'uppercase',letterSpacing:'.05em',border:`1px solid ${t.border}`,
+        background:'transparent',color:t.textSub}}>Export CSV</button>}
+    </div>
+    {!list.length&&<div style={{padding:'48px 40px',textAlign:'center',color:t.textMuted,fontSize:13}}>
+      Nothing tracked yet. Tick the ✓ box next to any event to mark that a product has been created and disseminated for it.</div>}
+    <div style={{display:'flex',flexDirection:'column',gap:10}}>
+      {list.map(it=>{
+        const s=it.snapshot||{};
+        const dist=parseFloat(s.distance_mi);
+        const dc=isNaN(dist)?t.textMuted:(dist<1?t.critical:dist<2?t.high:t.low);
+        const marked=it.checked_at?new Date(it.checked_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'';
+        return <div key={it.event_id} style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,padding:14,
+          display:'flex',gap:14,alignItems:'flex-start'}}>
+          <div style={{paddingTop:2}}><TrackCheck t={t} checked={true} onToggle={()=>tracked.toggle(s)} title="Remove from tracked"/></div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{display:'flex',alignItems:'baseline',gap:8,flexWrap:'wrap'}}>
+              <span style={{fontSize:14,fontWeight:600,color:t.text}}>{s.event_title||'Untitled event'}</span>
+              {s.event_url&&<a href={s.event_url} target="_blank" rel="noopener" style={{fontSize:10,color:accent,textDecoration:'none'}}>open ↗</a>}
+            </div>
+            <div style={{fontSize:11,color:t.textMuted,marginTop:3,display:'flex',gap:10,flexWrap:'wrap',alignItems:'center'}}>
+              {s.event_type&&<span>{s.event_type}</span>}
+              {s.event_date&&<span style={{...mono}}>{s.event_date}</span>}
+              {s.property_name&&<span>· {s.property_name}</span>}
+              {!isNaN(dist)&&<span style={{...mono,color:dc,fontWeight:700}}>{dist.toFixed(2)} mi</span>}
+              {(it.streams||[]).map(st=><span key={st} style={{...mono,fontSize:9,fontWeight:700,padding:'2px 6px',borderRadius:2,
+                textTransform:'uppercase',letterSpacing:'.04em',color:STREAM_COLOR[st]||accent,
+                background:`${STREAM_COLOR[st]||accent}18`,border:`1px solid ${STREAM_COLOR[st]||accent}35`}}>{st}</span>)}
+            </div>
+            {s.event_location&&<div style={{fontSize:10,color:t.textMuted,marginTop:3,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{s.event_location}</div>}
+            <textarea value={it.note||''} onChange={e=>tracked.setNote(it.event_id,e.target.value)}
+              placeholder="Product notes — link, distro list, status…"
+              style={{marginTop:8,width:'100%',minHeight:38,resize:'vertical',fontFamily:'inherit',fontSize:11.5,
+              padding:'7px 9px',borderRadius:5,border:`1px solid ${t.border}`,background:t.bg,color:t.text,outline:'none'}}/>
+          </div>
+          <div style={{...mono,fontSize:9.5,color:t.textMuted,flexShrink:0,textAlign:'right',whiteSpace:'nowrap'}}>
+            Marked<br/>{marked}</div>
+        </div>;
+      })}
+    </div>
   </div>;
 };
 
@@ -1610,6 +1816,37 @@ const PropertyView=({t,name,stats,onBack,onOpenProperty})=>{
   </div>;
 };
 
+/* ═══ LOGIN GATE ═══════════════════════════════════════════════ */
+const Login=({t,auth})=>{
+  const [pw,setPw]=useState('');
+  const [err,setErr]=useState('');
+  const [busy,setBusy]=useState(false);
+  const submit=async(e)=>{
+    e.preventDefault();setBusy(true);setErr('');
+    const {error}=await auth.login(pw);
+    setBusy(false);
+    if(error) setErr('Incorrect password');
+  };
+  return <div style={{height:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:t.bg}}>
+    <form onSubmit={submit} style={{width:320,padding:28,background:t.surface,border:`1px solid ${t.border}`,borderRadius:10,
+      boxShadow:'0 20px 60px rgba(0,0,0,.4)'}}>
+      <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:18}}>
+        <div style={{width:30,height:30,borderRadius:7,background:t.accent,display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <span style={{...mono,fontSize:13,fontWeight:800,color:'#0a0e14'}}>PT</span></div>
+        <div><div style={{color:t.text,fontSize:14,fontWeight:700}}>Protest Tracker</div>
+          <div style={{...mono,color:t.accent,fontSize:9.5,letterSpacing:'.05em'}}>RESTRICTED ACCESS</div></div>
+      </div>
+      <input type="password" autoFocus value={pw} onChange={e=>{setPw(e.target.value);setErr('');}} placeholder="Password"
+        style={{width:'100%',padding:'10px 12px',borderRadius:6,border:`1px solid ${err?t.critical:t.border}`,
+        background:t.bg,color:t.text,fontSize:13,outline:'none'}}/>
+      {err&&<div style={{color:t.critical,fontSize:11,marginTop:8}}>{err}</div>}
+      <button type="submit" disabled={busy||!pw} style={{marginTop:14,width:'100%',padding:'10px',borderRadius:6,border:'none',
+        cursor:busy||!pw?'not-allowed':'pointer',background:t.accent,color:'#0a0e14',fontWeight:700,fontSize:13,opacity:busy||!pw?.6:1}}>
+        {busy?'Signing in…':'Enter'}</button>
+    </form>
+  </div>;
+};
+
 /* ═══ APP ══════════════════════════════════════════════════════ */
 const App=()=>{
   const saved=(()=>{try{return JSON.parse(localStorage.getItem('pt2_state')||'{}')}catch{return{}}})();
@@ -1621,7 +1858,9 @@ const App=()=>{
   const variant=darkMode?'midnight':'daylight';
   const t=THEMES[variant];
 
-  const {data,err}=useData();
+  const auth=useAuth();
+  const {data,err}=useData(auth.authed);
+  const tracked=useTracked(auth.authed);
   const stats=useMemo(()=>deriveStats(data),[data]);
 
   const persist=(k,v)=>{const s=JSON.parse(localStorage.getItem('pt2_state')||'{}');s[k]=v;localStorage.setItem('pt2_state',JSON.stringify(s));};
@@ -1630,25 +1869,32 @@ const App=()=>{
   const openProperty=name=>{setPrevView(view);setSelectedProperty(name);setView('property');};
   const closeProperty=()=>{setView(prevView||'dashboard');setSelectedProperty(null);};
 
-  if(err) return <div style={{padding:60,textAlign:'center',fontFamily:'Inter,sans-serif',color:'#666'}}>
-    <h2 style={{marginBottom:12}}>Could not load dashboard_data.json</h2>
-    <p>Make sure <code>dashboard_data.json</code> is in the same folder as this file.</p>
-    <p style={{marginTop:8,fontSize:12,color:'#999'}}>Error: {err}</p>
-    <a href="classic.html" style={{display:'inline-block',marginTop:16,color:'#a3e635'}}>← Switch to Classic Dashboard</a>
+  // Auth gate — nothing renders (and no data is fetched) until logged in.
+  if(auth.loading) return <div style={{height:'100vh',display:'flex',alignItems:'center',justifyContent:'center',
+    background:t.bg,color:t.textMuted,fontFamily:'Inter,sans-serif',fontSize:13}}>Loading…</div>;
+  if(sb&&!auth.authed) return <Login t={t} auth={auth}/>;
+
+  if(err) return <div style={{padding:60,textAlign:'center',fontFamily:'Inter,sans-serif',color:t.textMuted,background:t.bg,height:'100vh'}}>
+    <h2 style={{marginBottom:12,color:t.text}}>Could not load dashboard data</h2>
+    <p style={{fontSize:12}}>Error: {err}</p>
+    {sb&&<button onClick={auth.logout} style={{marginTop:16,padding:'8px 16px',borderRadius:6,border:`1px solid ${t.border}`,
+      background:'transparent',color:t.accent,cursor:'pointer'}}>Log out</button>}
   </div>;
 
   return <div style={{display:'flex',height:'100vh',overflow:'hidden',background:t.bg}}>
-    <Sidebar t={t} view={view} setView={handleView} stats={stats} version="v2.5"/>
+    <Sidebar t={t} view={view} setView={handleView} stats={stats} version="v2.6"
+      trackedCount={tracked.count} onLogout={sb?auth.logout:undefined}/>
     <div style={{flex:1,display:'flex',flexDirection:'column',minWidth:0,overflow:'hidden'}}>
       <TopBar t={t} view={view} generatedIso={data?.generated_iso}
         darkMode={darkMode} handleDark={handleDark} query={query} setQuery={setQuery}/>
       <div style={{flex:1,overflowY:'auto',position:'relative'}}>
         {view==='dashboard'&&<Dashboard t={t} stats={stats} data={data} onOpenProperty={openProperty} onGoThreat={()=>handleView('threat')}/>}
         {view==='threat'&&<ThreatWatch t={t} stats={stats} onOpenProperty={openProperty}/>}
-        {view==='events3'&&<EventsTable t={t} rows={data?.general?.rows} type="3day" subtitle={stats?.genSubtitle||''} onOpenProperty={openProperty}/>}
-        {view==='nogo'&&<EventsTable t={t} rows={data?.no_kings?.rows} type="nogo" subtitle={stats?.nkSubtitle||''} onOpenProperty={openProperty}/>}
-        {view==='pride'&&<EventsTable t={t} rows={data?.pride?.rows} type="pride" subtitle={stats?.pdSubtitle||''} onOpenProperty={openProperty}/>}
-        {view==='ice'&&<EventsTable t={t} rows={data?.ice?.rows} type="ice" subtitle={stats?.iceSubtitle||''}/>}
+        {view==='events3'&&<EventsTable t={t} rows={data?.general?.rows} type="3day" subtitle={stats?.genSubtitle||''} onOpenProperty={openProperty} tracked={tracked}/>}
+        {view==='nogo'&&<EventsTable t={t} rows={data?.no_kings?.rows} type="nogo" subtitle={stats?.nkSubtitle||''} onOpenProperty={openProperty} tracked={tracked}/>}
+        {view==='pride'&&<EventsTable t={t} rows={data?.pride?.rows} type="pride" subtitle={stats?.pdSubtitle||''} onOpenProperty={openProperty} tracked={tracked}/>}
+        {view==='ice'&&<EventsTable t={t} rows={data?.ice?.rows} type="ice" subtitle={stats?.iceSubtitle||''} tracked={tracked}/>}
+        {view==='tracked'&&<Tracked t={t} tracked={tracked}/>}
         {view==='map'&&<MapView t={t} markers={stats?.markers}/>}
         {view==='timeline'&&<Timeline t={t} data={data}/>}
         {view==='organizers'&&<Organizers t={t} orgs={stats?.orgs}/>}
