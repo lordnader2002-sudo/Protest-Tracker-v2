@@ -426,7 +426,7 @@ const NAV=[
   {id:'nogo',label:'No Kings Events'},
   {id:'pride',label:'Pride Month 2026'},
   {id:'ice',label:'ICE Detention'},
-  {id:'tracked',label:'Tracked'},
+  {id:'tracked',label:'Product Disseminated'},
   {section:'ANALYTICS'},
   {id:'map',label:'Map'},
   {id:'timeline',label:'Timeline'},
@@ -1025,7 +1025,7 @@ const EventsTable=({t,rows,type,subtitle,onOpenProperty,tracked})=>{
           <thead><tr>
             <th title="Product created & disseminated" style={{padding:'8px 10px',textAlign:'center',fontSize:9,fontWeight:700,
               letterSpacing:'.1em',textTransform:'uppercase',color:t.textMuted,borderBottom:`2px solid ${t.border}`,
-              whiteSpace:'nowrap',background:`${t.border}44`,position:'sticky',top:0,zIndex:2,width:36}}>✓</th>
+              whiteSpace:'normal',lineHeight:1.2,background:`${t.border}44`,position:'sticky',top:0,zIndex:2,width:52}}>Product Created</th>
             <TH col="property_name">{type==='ice'?'Facility':'Property'}</TH>
             <TH col="event_title">Event</TH>
             <TH col="event_type">Type</TH>
@@ -1430,7 +1430,8 @@ const Tracked=({t,tracked})=>{
           <div style={{flex:1,minWidth:0}}>
             <div style={{display:'flex',alignItems:'baseline',gap:8,flexWrap:'wrap'}}>
               <span style={{fontSize:14,fontWeight:600,color:t.text}}>{s.event_title||'Untitled event'}</span>
-              {s.event_url&&<a href={s.event_url} target="_blank" rel="noopener" style={{fontSize:10,color:accent,textDecoration:'none'}}>open ↗</a>}
+              {s.event_url&&<a href={s.event_url} target="_blank" rel="noopener" style={{fontSize:12,fontWeight:700,color:accent,textDecoration:'none',
+                padding:'2px 9px',borderRadius:5,border:`1px solid ${accent}66`,background:`${accent}1a`,whiteSpace:'nowrap'}}>Open ↗</a>}
             </div>
             <div style={{fontSize:11,color:t.textMuted,marginTop:3,display:'flex',gap:10,flexWrap:'wrap',alignItems:'center'}}>
               {s.event_type&&<span>{s.event_type}</span>}
