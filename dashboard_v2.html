@@ -429,7 +429,7 @@ const NAV=[
   {id:'pride',label:'Pride Month 2026'},
   {id:'ice',label:'ICE Detention'},
   {id:'fifa',label:'FIFA World Cup'},
-  {id:'tracked',label:'Product Disseminated'},
+  {id:'tracked',label:'Product Tracker'},
   {section:'ANALYTICS'},
   {id:'map',label:'Map'},
   {id:'timeline',label:'Timeline'},
@@ -515,7 +515,7 @@ const Sidebar=({t,view,setView,stats,version,trackedCount,onLogout})=><aside sty
 
 /* ═══ TOPBAR ═══════════════════════════════════════════════════ */
 const LABELS={dashboard:'Summary',threat:'Threat Watch',events3:'General Events',nogo:'No Kings Events',
-  pride:'Pride Month 2026',ice:'ICE Detention Centers',fifa:'FIFA World Cup 2026',tracked:'Tracked Products',map:'Map',timeline:'Timeline',
+  pride:'Pride Month 2026',ice:'ICE Detention Centers',fifa:'FIFA World Cup 2026',tracked:'Product Tracker',map:'Map',timeline:'Timeline',
   organizers:'Organizers',trends:'Trends',property:'Property'};
 
 function fmtBreadcrumbDate(generatedIso){
@@ -1439,14 +1439,17 @@ const Tracked=({t,tracked})=>{
               {s.event_url&&<a href={s.event_url} target="_blank" rel="noopener" style={{fontSize:12,fontWeight:700,color:accent,textDecoration:'none',
                 padding:'2px 9px',borderRadius:5,border:`1px solid ${accent}66`,background:`${accent}1a`,whiteSpace:'nowrap'}}>Open ↗</a>}
             </div>
+            {s.event_date&&<div style={{...mono,fontSize:12,fontWeight:600,color:t.text,marginTop:4}}>{s.event_date}</div>}
             <div style={{fontSize:11,color:t.textMuted,marginTop:3,display:'flex',gap:10,flexWrap:'wrap',alignItems:'center'}}>
               {s.event_type&&<span>{s.event_type}</span>}
-              {s.event_date&&<span style={{...mono}}>{s.event_date}</span>}
               {s.property_name&&<span>· {s.property_name}</span>}
               {!isNaN(dist)&&<span style={{...mono,color:dc,fontWeight:700}}>{dist.toFixed(2)} mi</span>}
               {(it.streams||[]).map(st=><span key={st} style={{...mono,fontSize:9,fontWeight:700,padding:'2px 6px',borderRadius:2,
                 textTransform:'uppercase',letterSpacing:'.04em',color:STREAM_COLOR[st]||accent,
                 background:`${STREAM_COLOR[st]||accent}18`,border:`1px solid ${STREAM_COLOR[st]||accent}35`}}>{st}</span>)}
+              {marked&&<span style={{...mono,fontSize:9,fontWeight:600,padding:'2px 7px',borderRadius:10,
+                color:t.textMuted,background:`${t.border}`,border:`1px solid ${t.border}`,whiteSpace:'nowrap'}}>
+                Saved {marked}</span>}
             </div>
             {s.event_location&&<div style={{fontSize:10,color:t.textMuted,marginTop:3,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{s.event_location}</div>}
             <textarea value={it.note||''} onChange={e=>tracked.setNote(it.event_id,e.target.value)}
@@ -1454,8 +1457,6 @@ const Tracked=({t,tracked})=>{
               style={{marginTop:8,width:'100%',minHeight:38,resize:'vertical',fontFamily:'inherit',fontSize:11.5,
               padding:'7px 9px',borderRadius:5,border:`1px solid ${t.border}`,background:t.bg,color:t.text,outline:'none'}}/>
           </div>
-          <div style={{...mono,fontSize:9.5,color:t.textMuted,flexShrink:0,textAlign:'right',whiteSpace:'nowrap'}}>
-            Marked<br/>{marked}</div>
         </div>;
       })}
     </div>
