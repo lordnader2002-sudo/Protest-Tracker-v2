@@ -277,6 +277,7 @@ function deriveStats(data){
   // properties — kept out of `all` so company Threat Watch / property / organizer
   // aggregations are unaffected.
   const ice=data.ice?.rows||[];
+  const fifa=data.fifa?.rows||[];
   const all=[...gen,...nk,...pd];
   BOOTSTRAP_TS=computeBootstrapTs(all);
   const newCount=all.filter(isNewRow).length;
@@ -411,10 +412,11 @@ function deriveStats(data){
     events:p.events.sort((a,b)=>(parseFloat(a.distance_mi)||99)-(parseFloat(b.distance_mi)||99)),
   })).sort((a,b)=>b.events.length-a.events.length);
 
-  return {general:gen.length,noKings:nk.length,pride:pd.length,ice:ice.length,newCount,dupCount,recCount,
+  return {general:gen.length,noKings:nk.length,pride:pd.length,ice:ice.length,fifa:fifa.length,newCount,dupCount,recCount,
     types,props,totalPropCount,bands,bandsNK,bandsPD,bandsICE,threat,closeCount,markers,orgs,halfMile,properties,
     generated:data.generated||'',genSubtitle:data.general?.subtitle||'',
-    nkSubtitle:data.no_kings?.subtitle||'',pdSubtitle:data.pride?.subtitle||'',iceSubtitle:data.ice?.subtitle||''};
+    nkSubtitle:data.no_kings?.subtitle||'',pdSubtitle:data.pride?.subtitle||'',
+    iceSubtitle:data.ice?.subtitle||'',fifaSubtitle:data.fifa?.subtitle||''};
 }
 
 /* ═══ SIDEBAR ══════════════════════════════════════════════════ */
@@ -426,6 +428,7 @@ const NAV=[
   {id:'nogo',label:'No Kings Events'},
   {id:'pride',label:'Pride Month 2026'},
   {id:'ice',label:'ICE Detention'},
+  {id:'fifa',label:'FIFA World Cup'},
   {id:'tracked',label:'Product Disseminated'},
   {section:'ANALYTICS'},
   {id:'map',label:'Map'},
@@ -444,6 +447,7 @@ function navBadge(id,stats,trackedCount){
     case 'nogo':       return stats.noKings;
     case 'pride':      return stats.pride;
     case 'ice':        return stats.ice;
+    case 'fifa':       return stats.fifa;
     case 'map':        return stats.markers?.length;
     case 'timeline':   return (stats.general||0)+(stats.noKings||0)+(stats.pride||0);
     case 'organizers': return stats.orgs?.length;
@@ -511,7 +515,7 @@ const Sidebar=({t,view,setView,stats,version,trackedCount,onLogout})=><aside sty
 
 /* ═══ TOPBAR ═══════════════════════════════════════════════════ */
 const LABELS={dashboard:'Summary',threat:'Threat Watch',events3:'General Events',nogo:'No Kings Events',
-  pride:'Pride Month 2026',ice:'ICE Detention Centers',tracked:'Tracked Products',map:'Map',timeline:'Timeline',
+  pride:'Pride Month 2026',ice:'ICE Detention Centers',fifa:'FIFA World Cup 2026',tracked:'Tracked Products',map:'Map',timeline:'Timeline',
   organizers:'Organizers',trends:'Trends',property:'Property'};
 
 function fmtBreadcrumbDate(generatedIso){
@@ -683,6 +687,7 @@ const Dashboard=({t,stats,data,onOpenProperty,onGoThreat})=>{
       <StatCard t={t} label="No Kings" value={stats.noKings} sub="30-day window" color="#7c3aed"/>
       <StatCard t={t} label="Pride Month" value={stats.pride} sub="Until June 30" color="#ec4899"/>
       <StatCard t={t} label="ICE Detention" value={stats.ice} sub="Near detention centers" color="#0891b2"/>
+      <StatCard t={t} label="FIFA World Cup" value={stats.fifa} sub="Near host venues" color="#f59e0b"/>
       <StatCard t={t} label="New (7 Days)" value={stats.newCount} sub="First seen &lt; 7 days ago" color={t.low}/>
       <StatCard t={t} label="Duplicates" value={stats.dupCount} sub="Near 2+ properties" color={t.high}/>
       <StatCard t={t} label="Recurring" value={stats.recCount} sub="Multiple timeslots" color={t.textMuted}/>
@@ -1026,13 +1031,14 @@ const EventsTable=({t,rows,type,subtitle,onOpenProperty,tracked})=>{
             <th title="Product created & disseminated" style={{padding:'8px 10px',textAlign:'center',fontSize:9,fontWeight:700,
               letterSpacing:'.1em',textTransform:'uppercase',color:t.textMuted,borderBottom:`2px solid ${t.border}`,
               whiteSpace:'normal',lineHeight:1.2,background:`${t.border}44`,position:'sticky',top:0,zIndex:2,width:52}}>Product Created</th>
-            <TH col="property_name">{type==='ice'?'Facility':'Property'}</TH>
+            <TH col="property_name">{type==='ice'?'Facility':type==='fifa'?'Venue':'Property'}</TH>
             <TH col="event_title">Event</TH>
             <TH col="event_type">Type</TH>
             <TH col="event_date">Date / Time</TH>
             <TH col="event_location">Location</TH>
-            <TH col="distance_mi" right>{type==='ice'?'→ Facility':'Distance'}</TH>
+            <TH col="distance_mi" right>{type==='ice'?'→ Facility':type==='fifa'?'→ Venue':'Distance'}</TH>
             {type==='ice'&&<TH col="nearest_prop_dist_mi" right>→ Store</TH>}
+            {type==='fifa'&&<TH col="nearest_prop_dist_mi" right>→ Store</TH>}
             <TH col="is_new">New</TH>
             <TH col="is_duplicate">Dup</TH>
             <TH col="is_recurring">Recur</TH>
@@ -1040,7 +1046,7 @@ const EventsTable=({t,rows,type,subtitle,onOpenProperty,tracked})=>{
           <tbody>
             {data.map((ev,i)=>{
               const dist=parseFloat(ev.distance_mi)||99;
-              const storeDist=type==='ice'?(parseFloat(ev.nearest_prop_dist_mi)||null):null;
+              const storeDist=(type==='ice'||type==='fifa')?(parseFloat(ev.nearest_prop_dist_mi)||null):null;
               const bandBg=dist<1?`${t.critical}28`:dist<2?`${t.high}1a`:'transparent';
               const isNew=(ev.is_new||'').toLowerCase()==='yes';
               return <tr key={i}
@@ -1065,7 +1071,7 @@ const EventsTable=({t,rows,type,subtitle,onOpenProperty,tracked})=>{
                 <td style={{...tdBase,fontSize:11,maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ev.event_location}</td>
                 <td style={{...tdBase,...mono,fontWeight:700,textAlign:'right',
                   color:dist<1?t.critical:dist<2?t.high:t.low,fontSize:13}}>{dist.toFixed(2)}</td>
-                {type==='ice'&&<td style={{...tdBase,textAlign:'right'}}>
+                {(type==='ice'||type==='fifa')&&<td style={{...tdBase,textAlign:'right'}}>
                   {storeDist!=null
                     ? <div>
                         <div style={{...mono,fontWeight:700,fontSize:13,
@@ -1080,7 +1086,7 @@ const EventsTable=({t,rows,type,subtitle,onOpenProperty,tracked})=>{
                 <td style={tdBase}>{flagCell(ev.is_recurring)}</td>
               </tr>;
             })}
-            {data.length===0&&<tr><td colSpan={type==='ice'?11:10} style={{padding:40,textAlign:'center',color:t.textMuted,fontSize:13}}>
+            {data.length===0&&<tr><td colSpan={(type==='ice'||type==='fifa')?11:10} style={{padding:40,textAlign:'center',color:t.textMuted,fontSize:13}}>
               {search?`No events match "${search}"`:'No events in this window'}</td></tr>}
           </tbody>
         </table>
@@ -1895,6 +1901,7 @@ const App=()=>{
         {view==='nogo'&&<EventsTable t={t} rows={data?.no_kings?.rows} type="nogo" subtitle={stats?.nkSubtitle||''} onOpenProperty={openProperty} tracked={tracked}/>}
         {view==='pride'&&<EventsTable t={t} rows={data?.pride?.rows} type="pride" subtitle={stats?.pdSubtitle||''} onOpenProperty={openProperty} tracked={tracked}/>}
         {view==='ice'&&<EventsTable t={t} rows={data?.ice?.rows} type="ice" subtitle={stats?.iceSubtitle||''} tracked={tracked}/>}
+        {view==='fifa'&&<EventsTable t={t} rows={data?.fifa?.rows} type="fifa" subtitle={stats?.fifaSubtitle||''} tracked={tracked}/>}
         {view==='tracked'&&<Tracked t={t} tracked={tracked}/>}
         {view==='map'&&<MapView t={t} markers={stats?.markers}/>}
         {view==='timeline'&&<Timeline t={t} data={data}/>}
