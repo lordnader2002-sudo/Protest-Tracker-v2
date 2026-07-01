@@ -426,7 +426,6 @@ const NAV=[
   {id:'threat',label:'Threat Watch'},
   {id:'events3',label:'General Events'},
   {id:'nogo',label:'No Kings Events'},
-  {id:'pride',label:'Pride Month 2026'},
   {id:'ice',label:'ICE Detention'},
   {id:'fifa',label:'FIFA World Cup'},
   {id:'tracked',label:'Product Tracker'},
@@ -445,7 +444,6 @@ function navBadge(id,stats,trackedCount){
     case 'threat':     return stats.halfMile?.length;
     case 'events3':    return stats.general;
     case 'nogo':       return stats.noKings;
-    case 'pride':      return stats.pride;
     case 'ice':        return stats.ice;
     case 'fifa':       return stats.fifa;
     case 'map':        return stats.markers?.length;
@@ -685,7 +683,6 @@ const Dashboard=({t,stats,data,onOpenProperty,onGoThreat})=>{
     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(140px, 1fr))',gap:12}}>
       <StatCard t={t} label="General Events" value={stats.general} sub="72-hour window" color={t.accent}/>
       <StatCard t={t} label="No Kings" value={stats.noKings} sub="30-day window" color="#7c3aed"/>
-      <StatCard t={t} label="Pride Month" value={stats.pride} sub="Until June 30" color="#ec4899"/>
       <StatCard t={t} label="ICE Detention" value={stats.ice} sub="Near detention centers" color="#0891b2"/>
       <StatCard t={t} label="FIFA World Cup" value={stats.fifa} sub="Near host venues" color="#f59e0b"/>
       <StatCard t={t} label="New (7 Days)" value={stats.newCount} sub="First seen &lt; 7 days ago" color={t.low}/>
@@ -698,7 +695,7 @@ const Dashboard=({t,stats,data,onOpenProperty,onGoThreat})=>{
       {/* Proximity */}
       <div style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,padding:18}}>
         <div style={{...mono,fontSize:10,fontWeight:600,letterSpacing:'.12em',textTransform:'uppercase',color:t.textMuted,marginBottom:14}}>Proximity Breakdown</div>
-        {[{label:'General',b:stats.bands,color:t.accent},{label:'No Kings',b:stats.bandsNK,color:'#7c3aed'},{label:'Pride Month',b:stats.bandsPD,color:'#ec4899'},{label:'ICE (to facility)',b:stats.bandsICE,color:'#0891b2'}].map(g=>{
+        {[{label:'General',b:stats.bands,color:t.accent},{label:'No Kings',b:stats.bandsNK,color:'#7c3aed'},{label:'ICE (to facility)',b:stats.bandsICE,color:'#0891b2'}].map(g=>{
           const total=g.b.red+g.b.amber+g.b.green||1;
           return <div key={g.label} style={{marginBottom:12}}>
             <div style={{fontSize:10,fontWeight:700,color:t.textSub,marginBottom:6,textTransform:'uppercase',letterSpacing:'.06em'}}>{g.label}</div>
@@ -1282,7 +1279,6 @@ const OrganizerModal=({t,org,onClose})=>{
           {label:'Total',v:org.count,c:t.accent},
           {label:'General',v:org.streams.general,c:t.accent},
           {label:'No Kings',v:org.streams.no_kings,c:'#7c3aed'},
-          {label:'Pride',v:org.streams.pride,c:'#ec4899'},
         ].map(s=><div key={s.label}>
           <div style={{...mono,fontSize:9,fontWeight:700,color:t.textMuted,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:3}}>{s.label}</div>
           <div style={{...mono,fontSize:22,fontWeight:700,color:s.v?s.c:t.textMuted}}>{s.v}</div>
@@ -1472,7 +1468,6 @@ const Trends=({t,data,stats})=>{
   const streams=[
     {id:'general', label:'General Events',  color:t.accent,    total:stats?.general||0,  bands:stats?.bands||{red:0,amber:0,green:0},  new:(runs[runs.length-1]?.gen_new??null)},
     {id:'no_kings',label:'No Kings',        color:'#7c3aed',   total:stats?.noKings||0,  bands:stats?.bandsNK||{red:0,amber:0,green:0}, new:(runs[runs.length-1]?.nk_new??null)},
-    {id:'pride',   label:'Pride Month',     color:'#ec4899',   total:stats?.pride||0,    bands:stats?.bandsPD||{red:0,amber:0,green:0}, new:(runs[runs.length-1]?.pd_new??null)},
     {id:'ice',     label:'ICE Detention',   color:'#0891b2',   total:stats?.ice||0,      bands:stats?.bandsICE||{red:0,amber:0,green:0},new:(runs[runs.length-1]?.ice_new??null)},
   ];
 
@@ -1497,7 +1492,6 @@ const Trends=({t,data,stats})=>{
       data:{labels,datasets:[
         baseDataset('General',  runs.map(r=>r.gen_total??0),t.accent),
         baseDataset('No Kings', runs.map(r=>r.nk_total??0),'#7c3aed'),
-        baseDataset('Pride',    runs.map(r=>r.pd_total??0),'#ec4899'),
         baseDataset('ICE',      runs.map(r=>r.ice_total??0),'#0891b2'),
       ]},
       options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
@@ -1900,7 +1894,6 @@ const App=()=>{
         {view==='threat'&&<ThreatWatch t={t} stats={stats} onOpenProperty={openProperty}/>}
         {view==='events3'&&<EventsTable t={t} rows={data?.general?.rows} type="3day" subtitle={stats?.genSubtitle||''} onOpenProperty={openProperty} tracked={tracked}/>}
         {view==='nogo'&&<EventsTable t={t} rows={data?.no_kings?.rows} type="nogo" subtitle={stats?.nkSubtitle||''} onOpenProperty={openProperty} tracked={tracked}/>}
-        {view==='pride'&&<EventsTable t={t} rows={data?.pride?.rows} type="pride" subtitle={stats?.pdSubtitle||''} onOpenProperty={openProperty} tracked={tracked}/>}
         {view==='ice'&&<EventsTable t={t} rows={data?.ice?.rows} type="ice" subtitle={stats?.iceSubtitle||''} tracked={tracked}/>}
         {view==='fifa'&&<EventsTable t={t} rows={data?.fifa?.rows} type="fifa" subtitle={stats?.fifaSubtitle||''} tracked={tracked}/>}
         {view==='tracked'&&<Tracked t={t} tracked={tracked}/>}
