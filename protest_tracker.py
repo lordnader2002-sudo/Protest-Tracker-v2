@@ -53,7 +53,6 @@ from openpyxl.utils import get_column_letter
 
 PROPERTIES_CSV  = "properties.csv"
 DETENTION_CSV   = "detention_centers.csv"   # ICE detention facilities (same column shape)
-FIFA_VENUES_CSV = "fifa_venues.csv"         # FIFA World Cup 2026 host stadiums
 MOBILIZE_API    = "https://api.mobilize.us/v1/events"
 
 # Optional API key — set via env var MOBILIZE_API_KEY or --api-key argument.
@@ -65,15 +64,23 @@ CLUSTER_RADIUS_MI = 35   # properties within this distance share one API query
 DAYS_GENERAL      = 3    # 3-day event window
 DAYS_NO_KINGS     = 30   # No Kings event window
 DAYS_ICE          = 30   # ICE detention protest window
-DAYS_FIFA         = 45   # covers full tournament (Jun 11 – Jul 19) + run-out
-FIFA_SEARCH_RADIUS_MI = 25  # broader net — protests happen across the host metro
+
+# Midterm elections — collect through election day (Nov 3, 2026) plus the
+# post-election window when result-related protests are most likely.
+ELECTION_END_DATE = datetime(2026, 11, 30, 23, 59, 59, tzinfo=_EASTERN)
 
 NO_KINGS_KEYWORDS = [
     "no kings", "nokings", "no_kings", "#nokings", "50501",
-    # June 14 "Rise Up, Sing Out" action — Concert for the First Amendment
+    # June 14, 2026 "Rise Up, Sing Out" action — Concert for the First Amendment
     "rise up, sing out", "rise up sing out", "riseupsingout", "#riseupsingout",
     "one million rising", "nokingsday", "#nokingsday",
     "concert for the first amendment",
+    # 2026 movement phrasing — "The Next 250 Starts With Us" framing, plus
+    # allied national days of action that mobilize the same networks
+    "the next 250", "next 250 starts",
+    "good trouble",          # "Good Trouble Lives On" days of action
+    "free america",          # "Free America" weekend actions
+    "no thrones", "no crowns", "no tyrants", "we don't do kings",
 ]
 
 # ICE detention / immigration protest keywords. Phrase matches are plain substring
@@ -89,14 +96,16 @@ ICE_PHRASES = [
 ]
 ICE_ACRONYM_RE = re.compile(r"\bI\.?C\.?E\.?\b")   # uppercase 'ICE' / 'I.C.E.' only
 
-# FIFA World Cup 2026 protest keywords.
-FIFA_PHRASES = [
-    "fifa", "world cup", "worldcup", "copa mundial", "coupe du monde",
-    "world cup 2026", "fifa 2026", "fifa world cup",
-    "boycott world cup", "boycott fifa", "no world cup", "stop fifa",
-    "fifa protest", "world cup protest", "anti-fifa", "anti-world cup",
-    "stadium workers", "kafala", "fifa corruption", "world cup corruption",
-    "soccer protest", "football protest",
+# US midterm election keywords (2026 cycle). Broad terms like "election" and
+# "voter" are intentional — Mobilize is a political-organizing platform, and
+# the property-proximity anchor plus EXCLUDE_TYPES (phone banks, voter reg,
+# trainings…) keep the volume relevant.
+ELECTION_KEYWORDS = [
+    "midterm", "election", "voter", "voting", "ballot",
+    "get out the vote", "gotv", "vote early", "protect the vote",
+    "count every vote", "defend the vote", "polling place", "poll worker",
+    "poll watcher", "defend democracy", "save democracy", "democracy rally",
+    "gerrymander", "redistricting",
 ]
 
 # Pride Month 2026 — collect events from "now" through end-of-day June 30 2026.
@@ -891,31 +900,35 @@ def annotate_nearest_property(ice_rows: list[dict], properties: list[dict]) -> N
 
 
 
-def is_fifa_related(event: dict) -> bool:
-    """True if an event's title/description mentions FIFA / World Cup topics."""
+def is_election_related(event: dict) -> bool:
+    """True if an event's title/description mentions midterm-election topics."""
     raw = ((event.get("title") or "") + " " + (event.get("description") or "")).lower()
-    return any(p in raw for p in FIFA_PHRASES)
+    return any(p in raw for p in ELECTION_KEYWORDS)
 
 
-def collect_fifa_events(venues: list[dict]) -> list[dict]:
-    """Collect FIFA World Cup protest events near the 16 host venues.
+def collect_election_events(properties: list[dict]) -> list[dict]:
+    """Collect midterm-election events near company properties.
 
-    Mirrors collect_ice_events but uses FIFA_SEARCH_RADIUS_MI (25 mi) and
-    the FIFA keyword filter.  Returns rows sorted by start time.
+    Mirrors collect_ice_events but anchors on company properties (standard
+    SEARCH_RADIUS_MI) with the election keyword filter, collecting through
+    ELECTION_END_DATE.  Returns rows sorted by start time.
     """
-    if not venues:
-        print("  No FIFA venues loaded — skipping FIFA stream.\n")
+    if not properties:
+        print("  No properties loaded — skipping elections stream.\n")
         return []
 
     now_ts  = int(datetime.now(tz=timezone.utc).timestamp())
-    api_end = now_ts + DAYS_FIFA * 86_400
+    api_end = int(ELECTION_END_DATE.timestamp())
+    if api_end <= now_ts:
+        print("  Election window has passed — skipping elections stream.\n")
+        return []
 
-    clusters = cluster_properties(venues)
-    print(f"  Clustered {len(venues)} FIFA venues into "
-          f"{len(clusters)} geographic groups.\n")
+    clusters = cluster_properties(properties)
+    print(f"  Clustered {len(properties)} properties into "
+          f"{len(clusters)} geographic groups (elections sweep).\n")
 
-    fifa_rows: list[dict] = []
-    seen_fifa: set[tuple] = set()
+    election_rows: list[dict] = []
+    seen_elec: set[tuple] = set()
     stats = {"no_coords": 0, "too_far": 0, "passed": 0}
 
     def _loc_key(row: dict):
@@ -926,52 +939,29 @@ def collect_fifa_events(venues: list[dict]) -> list[dict]:
 
     def process_events(events: list[dict], cluster: list[dict]) -> None:
         for ev in events:
-            if not is_fifa_related(ev):
+            if not is_election_related(ev):
                 continue
             etype_raw = (ev.get("event_type") or "OTHER").upper()
             if etype_raw in EXCLUDE_TYPES:
                 continue
-            for venue in cluster:
-                for row in expand_event(ev, venue, stats, radius_mi=FIFA_SEARCH_RADIUS_MI):
-                    key = (_loc_key(row), row["event_dt_sort"], venue["id"])
-                    if key not in seen_fifa:
-                        seen_fifa.add(key)
-                        fifa_rows.append(row)
+            for prop in cluster:
+                for row in expand_event(ev, prop, stats):
+                    key = (_loc_key(row), row["event_dt_sort"], prop["id"])
+                    if key not in seen_elec:
+                        seen_elec.add(key)
+                        election_rows.append(row)
                         stats["passed"] += 1
 
     _run_cluster_queries(clusters, now_ts, api_end, process_events)
 
-    print(f"\n  ── FIFA filter breakdown (event × venue pairs) ─────────────────")
+    print(f"\n  ── Elections filter breakdown (event × property pairs) ─────────")
     print(f"     No coordinates (virtual/TBD) : {stats['no_coords']:>6}")
-    print(f"     Outside {FIFA_SEARCH_RADIUS_MI}-mile radius       : {stats['too_far']:>6}")
-    print(f"     ✓ Passed to FIFA sheet       : {stats['passed']:>6}")
+    print(f"     Outside {SEARCH_RADIUS_MI}-mile radius        : {stats['too_far']:>6}")
+    print(f"     ✓ Passed to elections sheet  : {stats['passed']:>6}")
     print(f"  ───────────────────────────────────────────────────────────────\n")
 
-    fifa_rows.sort(key=lambda r: r["event_dt_sort"])
-    return fifa_rows
-
-
-def annotate_nearest_venue(fifa_rows: list[dict], venues: list[dict]) -> None:
-    """Add nearest_venue_name / nearest_venue_dist_mi to each FIFA row."""
-    if not venues or not fifa_rows:
-        return
-    for row in fifa_rows:
-        try:
-            e_lat = float(row["event_lat"])
-            e_lon = float(row["event_lon"])
-        except (ValueError, TypeError):
-            row["nearest_venue_name"] = ""
-            row["nearest_venue_dist_mi"] = ""
-            continue
-        best_dist: float | None = None
-        best_name = ""
-        for v in venues:
-            d = haversine(e_lat, e_lon, v["lat"], v["lon"])
-            if best_dist is None or d < best_dist:
-                best_dist = d
-                best_name = v["name"]
-        row["nearest_venue_name"] = best_name
-        row["nearest_venue_dist_mi"] = round(best_dist, 2) if best_dist is not None else ""
+    election_rows.sort(key=lambda r: r["event_dt_sort"])
+    return election_rows
 
 
 def _cell(ws, row: int, col: int, value,
@@ -1472,24 +1462,23 @@ def build_dashboard_json(general_rows: list[dict], no_kings_rows: list[dict],
                           pride_rows: list[dict] | None = None,
                           output_path: str = "dashboard_data.json",
                           ice_rows: list[dict] | None = None,
-                          fifa_rows: list[dict] | None = None) -> None:
+                          election_rows: list[dict] | None = None) -> None:
     import json as _json
     pride_rows = pride_rows or []
     ice_rows = ice_rows or []
-    fifa_rows = fifa_rows or []
+    election_rows = election_rows or []
     now = datetime.now(_EASTERN)
     end_3d  = (now + timedelta(days=DAYS_GENERAL)).strftime("%B %d, %Y")
     end_30d = (now + timedelta(days=DAYS_NO_KINGS)).strftime("%B %d, %Y")
     end_ice = (now + timedelta(days=DAYS_ICE)).strftime("%B %d, %Y")
-    end_fifa = (now + timedelta(days=DAYS_FIFA)).strftime("%B %d, %Y")
+    end_elec = ELECTION_END_DATE.strftime("%B %d, %Y")
     end_pd  = PRIDE_END_DATE.strftime("%B %d, %Y")
 
     _DASHBOARD_EXTRA = ["event_id", "event_lat", "event_lon", "prop_lat", "prop_lon",
                         "sponsor_name", "sponsor_email", "sponsor_phone", "sponsor_website",
                         "featured_image_url", "description", "tags", "is_virtual",
                         "accessibility_notes", "all_timeslots", "rsvp_count",
-                        "first_seen_iso", "nearest_prop_name", "nearest_prop_dist_mi",
-                        "nearest_venue_name", "nearest_venue_dist_mi"]
+                        "first_seen_iso", "nearest_prop_name", "nearest_prop_dist_mi"]
 
     def _clean(rows):
         out = []
@@ -1523,10 +1512,10 @@ def build_dashboard_json(general_rows: list[dict], no_kings_rows: list[dict],
             "subtitle": f"{now.strftime('%B %d, %Y')}  through  {end_ice}  •  Within {SEARCH_RADIUS_MI} miles of a detention facility",
             "rows": _clean(ice_rows),
         },
-        "fifa": {
-            "title": "FIFA World Cup 2026 Protests",
-            "subtitle": f"{now.strftime('%B %d, %Y')}  through  {end_fifa}  •  Within {FIFA_SEARCH_RADIUS_MI} miles of a host venue",
-            "rows": _clean(fifa_rows),
+        "elections": {
+            "title": "Political / Midterm Elections 2026",
+            "subtitle": f"{now.strftime('%B %d, %Y')}  through  {end_elec}  •  Within {SEARCH_RADIUS_MI} miles of a property",
+            "rows": _clean(election_rows),
         },
     }
     update_trend_data(general_rows, no_kings_rows, pride_rows, ice_rows=ice_rows)
@@ -1574,10 +1563,6 @@ def main() -> None:
         "--detention-csv", default=DETENTION_CSV,
         help=f"Path to ICE detention centers CSV (default: {DETENTION_CSV})",
     )
-    ap.add_argument(
-        "--fifa-csv", default=FIFA_VENUES_CSV,
-        help=f"Path to FIFA venues CSV (default: {FIFA_VENUES_CSV})",
-    )
     args = ap.parse_args()
 
     # Allow CLI flag to override env var
@@ -1608,6 +1593,7 @@ def main() -> None:
         no_kings_rows = collapse_recurring_timeslots(no_kings_rows)
         pride_rows    = collapse_recurring_timeslots(pride_rows)
         ice_rows      = collapse_recurring_timeslots(ice_rows)
+        election_rows = []   # elections stream is dashboard-only and not cached
     else:
         print(f"  Properties CSV : {args.csv}")
         print(f"  Output file    : {args.output}")
@@ -1618,6 +1604,7 @@ def main() -> None:
         print(f"  No Kings window: today + {DAYS_NO_KINGS} days")
         print(f"  Pride window   : today → {PRIDE_END_DATE.strftime('%b %d, %Y')}")
         print(f"  ICE window     : today + {DAYS_ICE} days (near detention centers)")
+        print(f"  Elections      : today → {ELECTION_END_DATE.strftime('%b %d, %Y')} (midterms)")
         print("=" * 64)
 
         properties = load_properties(args.csv)
@@ -1659,25 +1646,16 @@ def main() -> None:
         ice_rows = collect_ice_events(detention_centers)
         annotate_nearest_property(ice_rows, properties)
 
-        # ── FIFA World Cup protests (separate anchor set) ──────────────────
-        fifa_venues = load_properties(args.fifa_csv) \
-            if os.path.exists(args.fifa_csv) else []
-        if fifa_venues:
-            print(f"\nLoaded {len(fifa_venues)} FIFA World Cup venues.")
-            print("Querying Mobilize.us for FIFA/World Cup protests near venues …\n")
-        else:
-            print(f"\n  No FIFA venues CSV at {args.fifa_csv} — "
-                  f"FIFA stream will be empty.")
-        fifa_rows = collect_fifa_events(fifa_venues)
-        annotate_nearest_property(fifa_rows, properties)
-        annotate_nearest_venue(fifa_rows, fifa_venues)
+        # ── Midterm-election events (property-anchored sweep) ──────────────
+        print("\nQuerying Mobilize.us for midterm-election events near properties …\n")
+        election_rows = collect_election_events(properties)
 
         print(f"\n{'─'*64}")
         print(f"  3-Day events found        : {len(general_rows)} property-event rows")
         print(f"  No Kings events found     : {len(no_kings_rows)} property-event rows")
         print(f"  Pride events found        : {len(pride_rows)} property-event rows")
         print(f"  ICE events found          : {len(ice_rows)} facility-event rows")
-        print(f"  FIFA events found         : {len(fifa_rows)} venue-event rows")
+        print(f"  Election events found     : {len(election_rows)} property-event rows")
         print(f"{'─'*64}")
 
         print("\nAnnotating event flags (new / duplicate / recurring) …")
@@ -1685,7 +1663,7 @@ def main() -> None:
         annotate_event_flags(no_kings_rows, first_seen_map, now_iso)
         annotate_event_flags(pride_rows,    first_seen_map, now_iso)
         annotate_event_flags(ice_rows,      first_seen_map, now_iso)
-        annotate_event_flags(fifa_rows,     first_seen_map, now_iso)
+        annotate_event_flags(election_rows, first_seen_map, now_iso)
         new_g  = sum(1 for r in general_rows  if r.get("is_new"))
         new_nk = sum(1 for r in no_kings_rows if r.get("is_new"))
         new_pd = sum(1 for r in pride_rows    if r.get("is_new"))
@@ -1727,7 +1705,7 @@ def main() -> None:
             "no_kings":          len(no_kings_rows),
             "pride":             len(pride_rows),
             "ice":               len(ice_rows),
-            "fifa":              len(fifa_rows),
+            "elections":         len(election_rows),
             "new_3day":          new_g,
             "new_no_kings":      new_nk,
             "new_pride":         new_pd,
@@ -1740,7 +1718,7 @@ def main() -> None:
     print("\nBuilding Excel workbook …")
     build_excel(general_rows, no_kings_rows, pride_rows, args.output, ice_rows=ice_rows)
     build_dashboard_json(general_rows, no_kings_rows, pride_rows, ice_rows=ice_rows,
-                         fifa_rows=fifa_rows)
+                         election_rows=election_rows)
     print("Done.\n")
 
 
