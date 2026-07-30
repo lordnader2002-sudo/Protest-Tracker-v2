@@ -277,7 +277,7 @@ function deriveStats(data){
   // properties — kept out of `all` so company Threat Watch / property / organizer
   // aggregations are unaffected.
   const ice=data.ice?.rows||[];
-  const fifa=data.fifa?.rows||[];
+  const elections=data.elections?.rows||[];
   const all=[...gen,...nk,...pd];
   BOOTSTRAP_TS=computeBootstrapTs(all);
   const newCount=all.filter(isNewRow).length;
@@ -412,11 +412,11 @@ function deriveStats(data){
     events:p.events.sort((a,b)=>(parseFloat(a.distance_mi)||99)-(parseFloat(b.distance_mi)||99)),
   })).sort((a,b)=>b.events.length-a.events.length);
 
-  return {general:gen.length,noKings:nk.length,pride:pd.length,ice:ice.length,fifa:fifa.length,newCount,dupCount,recCount,
+  return {general:gen.length,noKings:nk.length,pride:pd.length,ice:ice.length,elections:elections.length,newCount,dupCount,recCount,
     types,props,totalPropCount,bands,bandsNK,bandsPD,bandsICE,threat,closeCount,markers,orgs,halfMile,properties,
     generated:data.generated||'',genSubtitle:data.general?.subtitle||'',
     nkSubtitle:data.no_kings?.subtitle||'',pdSubtitle:data.pride?.subtitle||'',
-    iceSubtitle:data.ice?.subtitle||'',fifaSubtitle:data.fifa?.subtitle||''};
+    iceSubtitle:data.ice?.subtitle||'',elecSubtitle:data.elections?.subtitle||''};
 }
 
 /* ═══ SIDEBAR ══════════════════════════════════════════════════ */
@@ -427,7 +427,7 @@ const NAV=[
   {id:'events3',label:'General Events'},
   {id:'nogo',label:'No Kings Events'},
   {id:'ice',label:'ICE Detention'},
-  {id:'fifa',label:'FIFA World Cup'},
+  {id:'elections',label:'Political/Midterm Elections'},
   {id:'tracked',label:'Product Tracker'},
   {section:'ANALYTICS'},
   {id:'map',label:'Map'},
@@ -445,7 +445,7 @@ function navBadge(id,stats,trackedCount){
     case 'events3':    return stats.general;
     case 'nogo':       return stats.noKings;
     case 'ice':        return stats.ice;
-    case 'fifa':       return stats.fifa;
+    case 'elections':  return stats.elections;
     case 'map':        return stats.markers?.length;
     case 'timeline':   return (stats.general||0)+(stats.noKings||0)+(stats.pride||0);
     case 'organizers': return stats.orgs?.length;
@@ -513,7 +513,7 @@ const Sidebar=({t,view,setView,stats,version,trackedCount,onLogout})=><aside sty
 
 /* ═══ TOPBAR ═══════════════════════════════════════════════════ */
 const LABELS={dashboard:'Summary',threat:'Threat Watch',events3:'General Events',nogo:'No Kings Events',
-  pride:'Pride Month 2026',ice:'ICE Detention Centers',fifa:'FIFA World Cup 2026',tracked:'Product Tracker',map:'Map',timeline:'Timeline',
+  pride:'Pride Month 2026',ice:'ICE Detention Centers',elections:'Political / Midterm Elections 2026',tracked:'Product Tracker',map:'Map',timeline:'Timeline',
   organizers:'Organizers',trends:'Trends',property:'Property'};
 
 function fmtBreadcrumbDate(generatedIso){
@@ -684,7 +684,7 @@ const Dashboard=({t,stats,data,onOpenProperty,onGoThreat})=>{
       <StatCard t={t} label="General Events" value={stats.general} sub="72-hour window" color={t.accent}/>
       <StatCard t={t} label="No Kings" value={stats.noKings} sub="30-day window" color="#7c3aed"/>
       <StatCard t={t} label="ICE Detention" value={stats.ice} sub="Near detention centers" color="#0891b2"/>
-      <StatCard t={t} label="FIFA World Cup" value={stats.fifa} sub="Near host venues" color="#f59e0b"/>
+      <StatCard t={t} label="Midterm Elections" value={stats.elections} sub="Through Nov 2026" color="#f59e0b"/>
       <StatCard t={t} label="New (7 Days)" value={stats.newCount} sub="First seen &lt; 7 days ago" color={t.low}/>
       <StatCard t={t} label="Duplicates" value={stats.dupCount} sub="Near 2+ properties" color={t.high}/>
       <StatCard t={t} label="Recurring" value={stats.recCount} sub="Multiple timeslots" color={t.textMuted}/>
@@ -967,15 +967,22 @@ const TrackCheck=({t,checked,onToggle,title})=>(
 
 /* ═══ EVENTS TABLE ═════════════════════════════════════════════ */
 const EventsTable=({t,rows,type,subtitle,onOpenProperty,tracked})=>{
-  const [sortCol,setSortCol]=useState('distance_mi');
+  // ICE tab defaults to sorting + filtering by distance to the nearest company
+  // property (store), since store impact is what the tab is monitored for.
+  const [sortCol,setSortCol]=useState(type==='ice'?'nearest_prop_dist_mi':'distance_mi');
   const [sortDir,setSortDir]=useState('asc');
   const [search,setSearch]=useState('');
+  const [storeMax,setStoreMax]=useState(type==='ice'?10:0);   // miles; 0 = show all
   const [hovered,setHovered]=useState(null);
   const [selected,setSelected]=useState(null);
 
   const data=useMemo(()=>{
     return (rows||[])
       .filter(r=>{
+        if(type==='ice'&&storeMax>0){
+          const d=parseFloat(r.nearest_prop_dist_mi);
+          if(isNaN(d)||d>storeMax) return false;
+        }
         if(!search) return true;
         const s=search.toLowerCase();
         return (r.event_title||'').toLowerCase().includes(s)||
@@ -991,7 +998,7 @@ const EventsTable=({t,rows,type,subtitle,onOpenProperty,tracked})=>{
         if(va>vb) return sortDir==='asc'?1:-1;
         return 0;
       });
-  },[rows,search,sortCol,sortDir]);
+  },[rows,search,sortCol,sortDir,storeMax,type]);
 
   const sort=col=>{if(sortCol===col)setSortDir(d=>d==='asc'?'desc':'asc');else{setSortCol(col);setSortDir('asc');}};
 
@@ -1020,6 +1027,22 @@ const EventsTable=({t,rows,type,subtitle,onOpenProperty,tracked})=>{
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search events, properties…"
           style={{border:'none',outline:'none',fontSize:12,background:'transparent',color:t.text,width:220}}/>
       </div>
+      {type==='ice'&&<div style={{display:'flex',alignItems:'center',gap:6,background:t.surface,
+        border:`1px solid ${t.border}`,borderRadius:4,padding:'6px 10px'}}>
+        <span style={{...mono,fontSize:9,fontWeight:700,color:t.textMuted,textTransform:'uppercase',
+          letterSpacing:'.06em'}}>Near store</span>
+        <select value={storeMax} onChange={e=>setStoreMax(parseFloat(e.target.value))}
+          style={{border:'none',outline:'none',background:'transparent',color:t.text,fontSize:12,cursor:'pointer'}}>
+          <option value={1}>≤ 1 mi</option>
+          <option value={2}>≤ 2 mi</option>
+          <option value={5}>≤ 5 mi</option>
+          <option value={10}>≤ 10 mi</option>
+          <option value={25}>≤ 25 mi</option>
+          <option value={0}>All facilities</option>
+        </select>
+      </div>}
+      {type==='ice'&&storeMax>0&&<span style={{fontSize:11,color:t.textMuted}}>
+        {data.length} event{data.length===1?'':'s'} within {storeMax} mi of a property</span>}
     </div>
     <div style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:4,overflow:'hidden'}}>
       <div style={{overflowX:'auto',maxHeight:'calc(100vh - 220px)',overflowY:'auto'}}>
@@ -1028,14 +1051,13 @@ const EventsTable=({t,rows,type,subtitle,onOpenProperty,tracked})=>{
             <th title="Product created & disseminated" style={{padding:'8px 10px',textAlign:'center',fontSize:9,fontWeight:700,
               letterSpacing:'.1em',textTransform:'uppercase',color:t.textMuted,borderBottom:`2px solid ${t.border}`,
               whiteSpace:'normal',lineHeight:1.2,background:`${t.border}44`,position:'sticky',top:0,zIndex:2,width:52}}>Product Created</th>
-            <TH col="property_name">{type==='ice'?'Facility':type==='fifa'?'Venue':'Property'}</TH>
+            <TH col="property_name">{type==='ice'?'Facility':'Property'}</TH>
             <TH col="event_title">Event</TH>
             <TH col="event_type">Type</TH>
             <TH col="event_date">Date / Time</TH>
             <TH col="event_location">Location</TH>
-            <TH col="distance_mi" right>{type==='ice'?'→ Facility':type==='fifa'?'→ Venue':'Distance'}</TH>
+            <TH col="distance_mi" right>{type==='ice'?'→ Facility':'Distance'}</TH>
             {type==='ice'&&<TH col="nearest_prop_dist_mi" right>→ Store</TH>}
-            {type==='fifa'&&<TH col="nearest_prop_dist_mi" right>→ Store</TH>}
             <TH col="is_new">New</TH>
             <TH col="is_duplicate">Dup</TH>
             <TH col="is_recurring">Recur</TH>
@@ -1043,7 +1065,7 @@ const EventsTable=({t,rows,type,subtitle,onOpenProperty,tracked})=>{
           <tbody>
             {data.map((ev,i)=>{
               const dist=parseFloat(ev.distance_mi)||99;
-              const storeDist=(type==='ice'||type==='fifa')?(parseFloat(ev.nearest_prop_dist_mi)||null):null;
+              const storeDist=type==='ice'?(parseFloat(ev.nearest_prop_dist_mi)||null):null;
               const bandBg=dist<1?`${t.critical}28`:dist<2?`${t.high}1a`:'transparent';
               const isNew=(ev.is_new||'').toLowerCase()==='yes';
               return <tr key={i}
@@ -1068,7 +1090,7 @@ const EventsTable=({t,rows,type,subtitle,onOpenProperty,tracked})=>{
                 <td style={{...tdBase,fontSize:11,maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ev.event_location}</td>
                 <td style={{...tdBase,...mono,fontWeight:700,textAlign:'right',
                   color:dist<1?t.critical:dist<2?t.high:t.low,fontSize:13}}>{dist.toFixed(2)}</td>
-                {(type==='ice'||type==='fifa')&&<td style={{...tdBase,textAlign:'right'}}>
+                {type==='ice'&&<td style={{...tdBase,textAlign:'right'}}>
                   {storeDist!=null
                     ? <div>
                         <div style={{...mono,fontWeight:700,fontSize:13,
@@ -1083,7 +1105,7 @@ const EventsTable=({t,rows,type,subtitle,onOpenProperty,tracked})=>{
                 <td style={tdBase}>{flagCell(ev.is_recurring)}</td>
               </tr>;
             })}
-            {data.length===0&&<tr><td colSpan={(type==='ice'||type==='fifa')?11:10} style={{padding:40,textAlign:'center',color:t.textMuted,fontSize:13}}>
+            {data.length===0&&<tr><td colSpan={type==='ice'?11:10} style={{padding:40,textAlign:'center',color:t.textMuted,fontSize:13}}>
               {search?`No events match "${search}"`:'No events in this window'}</td></tr>}
           </tbody>
         </table>
@@ -1852,7 +1874,8 @@ const Login=({t,auth})=>{
 /* ═══ APP ══════════════════════════════════════════════════════ */
 const App=()=>{
   const saved=(()=>{try{return JSON.parse(localStorage.getItem('pt2_state')||'{}')}catch{return{}}})();
-  const [view,setView]=useState(saved.view||'dashboard');
+  // Guard against a saved view whose tab no longer exists (e.g. retired fifa/pride)
+  const [view,setView]=useState(NAV.some(n=>n.id===saved.view)?saved.view:'dashboard');
   const [prevView,setPrevView]=useState('dashboard');
   const [selectedProperty,setSelectedProperty]=useState(null);
   const [darkMode,setDarkMode]=useState(saved.dark!=='0');
@@ -1884,7 +1907,7 @@ const App=()=>{
   </div>;
 
   return <div style={{display:'flex',height:'100vh',overflow:'hidden',background:t.bg}}>
-    <Sidebar t={t} view={view} setView={handleView} stats={stats} version="v2.6"
+    <Sidebar t={t} view={view} setView={handleView} stats={stats} version="v2.7"
       trackedCount={tracked.count} onLogout={sb?auth.logout:undefined}/>
     <div style={{flex:1,display:'flex',flexDirection:'column',minWidth:0,overflow:'hidden'}}>
       <TopBar t={t} view={view} generatedIso={data?.generated_iso}
@@ -1895,7 +1918,7 @@ const App=()=>{
         {view==='events3'&&<EventsTable t={t} rows={data?.general?.rows} type="3day" subtitle={stats?.genSubtitle||''} onOpenProperty={openProperty} tracked={tracked}/>}
         {view==='nogo'&&<EventsTable t={t} rows={data?.no_kings?.rows} type="nogo" subtitle={stats?.nkSubtitle||''} onOpenProperty={openProperty} tracked={tracked}/>}
         {view==='ice'&&<EventsTable t={t} rows={data?.ice?.rows} type="ice" subtitle={stats?.iceSubtitle||''} tracked={tracked}/>}
-        {view==='fifa'&&<EventsTable t={t} rows={data?.fifa?.rows} type="fifa" subtitle={stats?.fifaSubtitle||''} tracked={tracked}/>}
+        {view==='elections'&&<EventsTable t={t} rows={data?.elections?.rows} type="elections" subtitle={stats?.elecSubtitle||''} onOpenProperty={openProperty} tracked={tracked}/>}
         {view==='tracked'&&<Tracked t={t} tracked={tracked}/>}
         {view==='map'&&<MapView t={t} markers={stats?.markers}/>}
         {view==='timeline'&&<Timeline t={t} data={data}/>}
