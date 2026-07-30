@@ -1682,10 +1682,12 @@ def main() -> None:
         no_kings_rows = collapse_recurring_timeslots(no_kings_rows)
         pride_rows    = collapse_recurring_timeslots(pride_rows)
         ice_rows      = collapse_recurring_timeslots(ice_rows)
+        election_rows = collapse_recurring_timeslots(election_rows)
         print(f"  3-Day rows after collapse   : {len(general_rows)}")
         print(f"  No Kings rows after collapse: {len(no_kings_rows)}")
         print(f"  Pride rows after collapse   : {len(pride_rows)}")
         print(f"  ICE rows after collapse     : {len(ice_rows)}")
+        print(f"  Election rows after collapse: {len(election_rows)}")
 
         save_cache(general_rows, no_kings_rows, pride_rows, args.cache,
                    first_seen_map, ice_rows=ice_rows)
