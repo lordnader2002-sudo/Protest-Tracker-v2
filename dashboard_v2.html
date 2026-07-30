@@ -977,7 +977,19 @@ const EventsTable=({t,rows,type,subtitle,onOpenProperty,tracked})=>{
   const [selected,setSelected]=useState(null);
 
   const data=useMemo(()=>{
-    return (rows||[])
+    // Defensive collapse: one row per (event, property), keeping the earliest
+    // timeslot. The backend collapses recurring timeslots at collection time;
+    // this mirrors it client-side so data generated before that fix (or any
+    // stream that missed it) still renders one card per event.
+    const groups=new Map();
+    for(const r of rows||[]){
+      const k=(r.event_id||r.event_title||'')+'|'+(r.property_name||'');
+      const prev=groups.get(k);
+      if(!prev){groups.set(k,r);continue;}
+      const a=Date.parse(r.event_date),b=Date.parse(prev.event_date);
+      if(!isNaN(a)&&(isNaN(b)||a<b))groups.set(k,r);
+    }
+    return [...groups.values()]
       .filter(r=>{
         if(type==='ice'&&storeMax>0){
           const d=parseFloat(r.nearest_prop_dist_mi);
@@ -1086,7 +1098,11 @@ const EventsTable=({t,rows,type,subtitle,onOpenProperty,tracked})=>{
                   {ev.event_url&&<a href={ev.event_url} target="_blank" rel="noopener" style={{fontSize:10,color:t.accent}}>link</a>}
                 </td>
                 <td style={{...tdBase,fontSize:11}}>{ev.event_type}</td>
-                <td style={{...tdBase,...mono,fontSize:10}}>{ev.event_date}</td>
+                <td style={{...tdBase,...mono,fontSize:10}}>
+                  <div>{ev.event_date}</div>
+                  {Array.isArray(ev.all_timeslots)&&ev.all_timeslots.length>1&&
+                    <div style={{color:t.low,fontSize:9,fontWeight:700,marginTop:2}}>+{ev.all_timeslots.length-1} more dates</div>}
+                </td>
                 <td style={{...tdBase,fontSize:11,maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ev.event_location}</td>
                 <td style={{...tdBase,...mono,fontWeight:700,textAlign:'right',
                   color:dist<1?t.critical:dist<2?t.high:t.low,fontSize:13}}>{dist.toFixed(2)}</td>
