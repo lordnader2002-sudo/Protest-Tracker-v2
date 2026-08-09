@@ -279,6 +279,7 @@ function deriveStats(data){
   const ice=data.ice?.rows||[];
   const elections=data.elections?.rows||[];
   const labor=data.labor?.rows||[];
+  const mall=data.mall?.rows||[];
   const all=[...gen,...nk,...pd];
   BOOTSTRAP_TS=computeBootstrapTs(all);
   const newCount=all.filter(isNewRow).length;
@@ -413,12 +414,12 @@ function deriveStats(data){
     events:p.events.sort((a,b)=>(parseFloat(a.distance_mi)||99)-(parseFloat(b.distance_mi)||99)),
   })).sort((a,b)=>b.events.length-a.events.length);
 
-  return {general:gen.length,noKings:nk.length,pride:pd.length,ice:ice.length,elections:elections.length,labor:labor.length,newCount,dupCount,recCount,
+  return {general:gen.length,noKings:nk.length,pride:pd.length,ice:ice.length,elections:elections.length,labor:labor.length,mall:mall.length,newCount,dupCount,recCount,
     types,props,totalPropCount,bands,bandsNK,bandsPD,bandsICE,threat,closeCount,markers,orgs,halfMile,properties,
     generated:data.generated||'',genSubtitle:data.general?.subtitle||'',
     nkSubtitle:data.no_kings?.subtitle||'',pdSubtitle:data.pride?.subtitle||'',
     iceSubtitle:data.ice?.subtitle||'',elecSubtitle:data.elections?.subtitle||'',
-    laborSubtitle:data.labor?.subtitle||''};
+    laborSubtitle:data.labor?.subtitle||'',mallSubtitle:data.mall?.subtitle||''};
 }
 
 /* ═══ SIDEBAR ══════════════════════════════════════════════════ */
@@ -426,6 +427,7 @@ const NAV=[
   {section:'DISCOVER'},
   {id:'dashboard',label:'Summary'},
   {id:'threat',label:'Threat Watch'},
+  {id:'mall',label:'Mall Mentions'},
   {id:'events3',label:'General Events'},
   {id:'nogo',label:'No Kings Events'},
   {id:'ice',label:'ICE Detention'},
@@ -451,6 +453,7 @@ function navBadge(id,stats,trackedCount){
     case 'ice':        return stats.ice;
     case 'elections':  return stats.elections;
     case 'labor':      return stats.labor;
+    case 'mall':       return stats.mall;
     case 'map':        return stats.markers?.length;
     case 'timeline':   return (stats.general||0)+(stats.noKings||0)+(stats.pride||0);
     case 'organizers': return stats.orgs?.length;
@@ -521,7 +524,7 @@ const Sidebar=({t,view,setView,stats,version,trackedCount,onLogout})=><aside sty
 
 /* ═══ TOPBAR ═══════════════════════════════════════════════════ */
 const LABELS={dashboard:'Summary',threat:'Threat Watch',events3:'General Events',nogo:'No Kings Events',
-  pride:'Pride Month 2026',ice:'ICE Detention Centers',elections:'Political / Midterm Elections 2026',labor:'Labor Day Weekend 2026',tracked:'Product Tracker',map:'Map',timeline:'Timeline',
+  pride:'Pride Month 2026',ice:'ICE Detention Centers',elections:'Political / Midterm Elections 2026',labor:'Labor Day Weekend 2026',mall:'Mall Mentions',tracked:'Product Tracker',map:'Map',timeline:'Timeline',
   organizers:'Organizers',trends:'Trends',property:'Property'};
 
 function fmtBreadcrumbDate(generatedIso){
@@ -694,6 +697,7 @@ const Dashboard=({t,stats,data,onOpenProperty,onGoThreat})=>{
       <StatCard t={t} label="ICE Detention" value={stats.ice} sub="Near detention centers" color="#0891b2"/>
       <StatCard t={t} label="Midterm Elections" value={stats.elections} sub="Through Nov 2026" color="#f59e0b"/>
       <StatCard t={t} label="Labor Day Wknd" value={stats.labor} sub="Sep 4–7 · all themes" color="#e11d48"/>
+      <StatCard t={t} label="Mall Mentions" value={stats.mall} sub="Names a center or our property" color="#14b8a6"/>
       <StatCard t={t} label="New (7 Days)" value={stats.newCount} sub="First seen &lt; 7 days ago" color={t.low}/>
       <StatCard t={t} label="Duplicates" value={stats.dupCount} sub="Near 2+ properties" color={t.high}/>
       <StatCard t={t} label="Recurring" value={stats.recCount} sub="Multiple timeslots" color={t.textMuted}/>
@@ -1079,6 +1083,7 @@ const EventsTable=({t,rows,type,subtitle,onOpenProperty,tracked})=>{
             <TH col="event_location">Location</TH>
             <TH col="distance_mi" right>{type==='ice'?'→ Facility':'Distance'}</TH>
             {type==='ice'&&<TH col="nearest_prop_dist_mi" right>→ Store</TH>}
+            {type==='mall'&&<TH col="mall_terms">Matched</TH>}
             <TH col="is_new">New</TH>
             <TH col="is_duplicate">Dup</TH>
             <TH col="is_recurring">Recur</TH>
@@ -1125,12 +1130,20 @@ const EventsTable=({t,rows,type,subtitle,onOpenProperty,tracked})=>{
                       </div>
                     : <span style={{color:t.textMuted}}>—</span>}
                 </td>}
+                {type==='mall'&&<td style={{...tdBase,maxWidth:150}}>
+                  <div style={{display:'flex',flexWrap:'wrap',gap:3}}>
+                    {(ev.mall_terms||'').split(', ').filter(Boolean).map(term=>
+                      <span key={term} style={{...mono,fontSize:8.5,fontWeight:700,padding:'2px 6px',borderRadius:2,
+                        textTransform:'uppercase',letterSpacing:'.03em',color:'#14b8a6',
+                        background:'#14b8a618',border:'1px solid #14b8a635',whiteSpace:'nowrap'}}>{term}</span>)}
+                  </div>
+                </td>}
                 <td style={tdBase}>{flagCell(ev.is_new)}</td>
                 <td style={tdBase}>{flagCell(ev.is_duplicate)}</td>
                 <td style={tdBase}>{flagCell(ev.is_recurring)}</td>
               </tr>;
             })}
-            {data.length===0&&<tr><td colSpan={type==='ice'?11:10} style={{padding:40,textAlign:'center',color:t.textMuted,fontSize:13}}>
+            {data.length===0&&<tr><td colSpan={(type==='ice'||type==='mall')?11:10} style={{padding:40,textAlign:'center',color:t.textMuted,fontSize:13}}>
               {search?`No events match "${search}"`:'No events in this window'}</td></tr>}
           </tbody>
         </table>
@@ -1945,6 +1958,7 @@ const App=()=>{
         {view==='ice'&&<EventsTable t={t} rows={data?.ice?.rows} type="ice" subtitle={stats?.iceSubtitle||''} tracked={tracked}/>}
         {view==='elections'&&<EventsTable t={t} rows={data?.elections?.rows} type="elections" subtitle={stats?.elecSubtitle||''} onOpenProperty={openProperty} tracked={tracked}/>}
         {view==='labor'&&<EventsTable t={t} rows={data?.labor?.rows} type="labor" subtitle={stats?.laborSubtitle||''} onOpenProperty={openProperty} tracked={tracked}/>}
+        {view==='mall'&&<EventsTable t={t} rows={data?.mall?.rows} type="mall" subtitle={stats?.mallSubtitle||''} onOpenProperty={openProperty} tracked={tracked}/>}
         {view==='tracked'&&<Tracked t={t} tracked={tracked}/>}
         {view==='map'&&<MapView t={t} markers={stats?.markers}/>}
         {view==='timeline'&&<Timeline t={t} data={data}/>}
