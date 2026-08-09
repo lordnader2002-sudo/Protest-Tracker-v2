@@ -278,6 +278,7 @@ function deriveStats(data){
   // aggregations are unaffected.
   const ice=data.ice?.rows||[];
   const elections=data.elections?.rows||[];
+  const labor=data.labor?.rows||[];
   const all=[...gen,...nk,...pd];
   BOOTSTRAP_TS=computeBootstrapTs(all);
   const newCount=all.filter(isNewRow).length;
@@ -412,11 +413,12 @@ function deriveStats(data){
     events:p.events.sort((a,b)=>(parseFloat(a.distance_mi)||99)-(parseFloat(b.distance_mi)||99)),
   })).sort((a,b)=>b.events.length-a.events.length);
 
-  return {general:gen.length,noKings:nk.length,pride:pd.length,ice:ice.length,elections:elections.length,newCount,dupCount,recCount,
+  return {general:gen.length,noKings:nk.length,pride:pd.length,ice:ice.length,elections:elections.length,labor:labor.length,newCount,dupCount,recCount,
     types,props,totalPropCount,bands,bandsNK,bandsPD,bandsICE,threat,closeCount,markers,orgs,halfMile,properties,
     generated:data.generated||'',genSubtitle:data.general?.subtitle||'',
     nkSubtitle:data.no_kings?.subtitle||'',pdSubtitle:data.pride?.subtitle||'',
-    iceSubtitle:data.ice?.subtitle||'',elecSubtitle:data.elections?.subtitle||''};
+    iceSubtitle:data.ice?.subtitle||'',elecSubtitle:data.elections?.subtitle||'',
+    laborSubtitle:data.labor?.subtitle||''};
 }
 
 /* ═══ SIDEBAR ══════════════════════════════════════════════════ */
@@ -428,6 +430,8 @@ const NAV=[
   {id:'nogo',label:'No Kings Events'},
   {id:'ice',label:'ICE Detention'},
   {id:'elections',label:'Political/Midterm Elections'},
+  // Auto-hides once the weekend has passed and the stream is empty
+  {id:'labor',label:'Labor Day Weekend',hideAfter:Date.parse('2026-09-08T04:00:00Z')},
   {id:'tracked',label:'Product Tracker'},
   {section:'ANALYTICS'},
   {id:'map',label:'Map'},
@@ -446,6 +450,7 @@ function navBadge(id,stats,trackedCount){
     case 'nogo':       return stats.noKings;
     case 'ice':        return stats.ice;
     case 'elections':  return stats.elections;
+    case 'labor':      return stats.labor;
     case 'map':        return stats.markers?.length;
     case 'timeline':   return (stats.general||0)+(stats.noKings||0)+(stats.pride||0);
     case 'organizers': return stats.orgs?.length;
@@ -473,6 +478,9 @@ const Sidebar=({t,view,setView,stats,version,trackedCount,onLogout})=><aside sty
   {/* Nav */}
   <nav style={{flex:1,padding:'2px 0 12px',overflowY:'auto'}}>
     {NAV.map((item,i)=>{
+      // Time-boxed tabs (e.g. Labor Day weekend) disappear once their window
+      // has passed and no rows remain — no code change needed to retire them.
+      if(item.hideAfter&&Date.now()>item.hideAfter&&!(stats&&stats[item.id])) return null;
       if(item.section) return <div key={`s${i}`} style={{
         ...mono,fontSize:9.5,fontWeight:600,letterSpacing:'.14em',
         color:`${t.sidebarText}b3`,padding:'14px 18px 6px'}}>{item.section}</div>;
@@ -513,7 +521,7 @@ const Sidebar=({t,view,setView,stats,version,trackedCount,onLogout})=><aside sty
 
 /* ═══ TOPBAR ═══════════════════════════════════════════════════ */
 const LABELS={dashboard:'Summary',threat:'Threat Watch',events3:'General Events',nogo:'No Kings Events',
-  pride:'Pride Month 2026',ice:'ICE Detention Centers',elections:'Political / Midterm Elections 2026',tracked:'Product Tracker',map:'Map',timeline:'Timeline',
+  pride:'Pride Month 2026',ice:'ICE Detention Centers',elections:'Political / Midterm Elections 2026',labor:'Labor Day Weekend 2026',tracked:'Product Tracker',map:'Map',timeline:'Timeline',
   organizers:'Organizers',trends:'Trends',property:'Property'};
 
 function fmtBreadcrumbDate(generatedIso){
@@ -685,6 +693,7 @@ const Dashboard=({t,stats,data,onOpenProperty,onGoThreat})=>{
       <StatCard t={t} label="No Kings" value={stats.noKings} sub="30-day window" color="#7c3aed"/>
       <StatCard t={t} label="ICE Detention" value={stats.ice} sub="Near detention centers" color="#0891b2"/>
       <StatCard t={t} label="Midterm Elections" value={stats.elections} sub="Through Nov 2026" color="#f59e0b"/>
+      <StatCard t={t} label="Labor Day Wknd" value={stats.labor} sub="Sep 4–7 · all themes" color="#e11d48"/>
       <StatCard t={t} label="New (7 Days)" value={stats.newCount} sub="First seen &lt; 7 days ago" color={t.low}/>
       <StatCard t={t} label="Duplicates" value={stats.dupCount} sub="Near 2+ properties" color={t.high}/>
       <StatCard t={t} label="Recurring" value={stats.recCount} sub="Multiple timeslots" color={t.textMuted}/>
@@ -1935,6 +1944,7 @@ const App=()=>{
         {view==='nogo'&&<EventsTable t={t} rows={data?.no_kings?.rows} type="nogo" subtitle={stats?.nkSubtitle||''} onOpenProperty={openProperty} tracked={tracked}/>}
         {view==='ice'&&<EventsTable t={t} rows={data?.ice?.rows} type="ice" subtitle={stats?.iceSubtitle||''} tracked={tracked}/>}
         {view==='elections'&&<EventsTable t={t} rows={data?.elections?.rows} type="elections" subtitle={stats?.elecSubtitle||''} onOpenProperty={openProperty} tracked={tracked}/>}
+        {view==='labor'&&<EventsTable t={t} rows={data?.labor?.rows} type="labor" subtitle={stats?.laborSubtitle||''} onOpenProperty={openProperty} tracked={tracked}/>}
         {view==='tracked'&&<Tracked t={t} tracked={tracked}/>}
         {view==='map'&&<MapView t={t} markers={stats?.markers}/>}
         {view==='timeline'&&<Timeline t={t} data={data}/>}
