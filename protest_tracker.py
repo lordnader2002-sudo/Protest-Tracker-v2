@@ -69,6 +69,12 @@ DAYS_ICE          = 30   # ICE detention protest window
 # post-election window when result-related protests are most likely.
 ELECTION_END_DATE = datetime(2026, 11, 30, 23, 59, 59, tzinfo=_EASTERN)
 
+# Labor Day weekend 2026 — Friday lead-in through the Monday holiday.
+# Date-window bucket (no keyword filter): every event near a property that
+# weekend, riding the existing property sweep at zero extra API cost.
+LABOR_DAY_START = datetime(2026, 9, 4, 0, 0, 0, tzinfo=_EASTERN)
+LABOR_DAY_END   = datetime(2026, 9, 7, 23, 59, 59, tzinfo=_EASTERN)
+
 NO_KINGS_KEYWORDS = [
     "no kings", "nokings", "no_kings", "#nokings", "50501",
     # June 14, 2026 "Rise Up, Sing Out" action — Concert for the First Amendment
@@ -725,14 +731,17 @@ def collect_events(
       general_rows  – protest-type events within DAYS_GENERAL days
       no_kings_rows – No Kings events within DAYS_NO_KINGS days
       pride_rows    – Pride Month events between now and PRIDE_END_DATE
+      labor_rows    – all events during Labor Day weekend (Sep 4–7, 2026)
     All lists are sorted by event start time.
     """
     now_ts   = int(datetime.now(tz=timezone.utc).timestamp())
     end_30d  = now_ts + DAYS_NO_KINGS * 86_400
     end_3d   = now_ts + DAYS_GENERAL  * 86_400
     end_pd   = int(PRIDE_END_DATE.timestamp())
-    # Use the widest end-window so one API call covers general + no_kings + pride.
-    api_end  = max(end_30d, end_pd)
+    labor_start = int(LABOR_DAY_START.timestamp())
+    labor_end   = int(LABOR_DAY_END.timestamp())
+    # Use the widest end-window so one API call covers every bucket.
+    api_end  = max(end_30d, end_pd, labor_end if labor_end > now_ts else 0)
 
     clusters = cluster_properties(properties)
     print(f"  Clustered {len(properties)} properties into {len(clusters)} geographic groups.\n")
@@ -745,9 +754,11 @@ def collect_events(
     general_rows:  list[dict] = []
     no_kings_rows: list[dict] = []
     pride_rows:    list[dict] = []
+    labor_rows:    list[dict] = []
     seen_general:  set[tuple] = set()
     seen_no_kings: set[tuple] = set()
     seen_pride:    set[tuple] = set()
+    seen_labor:    set[tuple] = set()
 
     stats = {"no_coords": 0, "too_far": 0, "excluded_type": 0,
              "outside_window": 0, "passed": 0}
@@ -798,6 +809,14 @@ def collect_events(
                             seen_pride.add(pd_key)
                             pride_rows.append(row)
 
+                    # Labor Day weekend bucket — pure date window, all themes.
+                    if (etype_raw not in EXCLUDE_TYPES
+                            and labor_start <= row_ts <= labor_end):
+                        lb_key = (_loc_key(row), row["event_dt_sort"], prop["id"])
+                        if lb_key not in seen_labor:
+                            seen_labor.add(lb_key)
+                            labor_rows.append(row)
+
     # ── Query every cluster (handles rate-limit retries internally) ────────────
     _run_cluster_queries(clusters, now_ts, api_end, process_events)
 
@@ -812,7 +831,8 @@ def collect_events(
     general_rows.sort(key=lambda r: r["event_dt_sort"])
     no_kings_rows.sort(key=lambda r: r["event_dt_sort"])
     pride_rows.sort(key=lambda r: r["event_dt_sort"])
-    return general_rows, no_kings_rows, pride_rows
+    labor_rows.sort(key=lambda r: r["event_dt_sort"])
+    return general_rows, no_kings_rows, pride_rows, labor_rows
 
 
 def collect_ice_events(detention_centers: list[dict]) -> list[dict]:
@@ -1462,11 +1482,13 @@ def build_dashboard_json(general_rows: list[dict], no_kings_rows: list[dict],
                           pride_rows: list[dict] | None = None,
                           output_path: str = "dashboard_data.json",
                           ice_rows: list[dict] | None = None,
-                          election_rows: list[dict] | None = None) -> None:
+                          election_rows: list[dict] | None = None,
+                          labor_rows: list[dict] | None = None) -> None:
     import json as _json
     pride_rows = pride_rows or []
     ice_rows = ice_rows or []
     election_rows = election_rows or []
+    labor_rows = labor_rows or []
     now = datetime.now(_EASTERN)
     end_3d  = (now + timedelta(days=DAYS_GENERAL)).strftime("%B %d, %Y")
     end_30d = (now + timedelta(days=DAYS_NO_KINGS)).strftime("%B %d, %Y")
@@ -1516,6 +1538,11 @@ def build_dashboard_json(general_rows: list[dict], no_kings_rows: list[dict],
             "title": "Political / Midterm Elections 2026",
             "subtitle": f"{now.strftime('%B %d, %Y')}  through  {end_elec}  •  Within {SEARCH_RADIUS_MI} miles of a property",
             "rows": _clean(election_rows),
+        },
+        "labor": {
+            "title": "Labor Day Weekend 2026",
+            "subtitle": f"{LABOR_DAY_START.strftime('%B %d')} – {LABOR_DAY_END.strftime('%B %d, %Y')}  •  Within {SEARCH_RADIUS_MI} miles of a property  •  All event themes",
+            "rows": _clean(labor_rows),
         },
     }
     update_trend_data(general_rows, no_kings_rows, pride_rows, ice_rows=ice_rows)
@@ -1594,6 +1621,7 @@ def main() -> None:
         pride_rows    = collapse_recurring_timeslots(pride_rows)
         ice_rows      = collapse_recurring_timeslots(ice_rows)
         election_rows = []   # elections stream is dashboard-only and not cached
+        labor_rows    = []   # labor day stream is dashboard-only and not cached
     else:
         print(f"  Properties CSV : {args.csv}")
         print(f"  Output file    : {args.output}")
@@ -1632,7 +1660,7 @@ def main() -> None:
               f"dashboard=+{len(first_seen_map) - n_after_ledger} "
               f"→ {len(first_seen_map)} known event IDs")
 
-        general_rows, no_kings_rows, pride_rows = collect_events(properties)
+        general_rows, no_kings_rows, pride_rows, labor_rows = collect_events(properties)
 
         # ── ICE detention center protests (separate anchor set) ────────────
         detention_centers = load_properties(args.detention_csv) \
@@ -1656,6 +1684,7 @@ def main() -> None:
         print(f"  Pride events found        : {len(pride_rows)} property-event rows")
         print(f"  ICE events found          : {len(ice_rows)} facility-event rows")
         print(f"  Election events found     : {len(election_rows)} property-event rows")
+        print(f"  Labor Day wknd events     : {len(labor_rows)} property-event rows")
         print(f"{'─'*64}")
 
         print("\nAnnotating event flags (new / duplicate / recurring) …")
@@ -1664,6 +1693,7 @@ def main() -> None:
         annotate_event_flags(pride_rows,    first_seen_map, now_iso)
         annotate_event_flags(ice_rows,      first_seen_map, now_iso)
         annotate_event_flags(election_rows, first_seen_map, now_iso)
+        annotate_event_flags(labor_rows,    first_seen_map, now_iso)
         new_g  = sum(1 for r in general_rows  if r.get("is_new"))
         new_nk = sum(1 for r in no_kings_rows if r.get("is_new"))
         new_pd = sum(1 for r in pride_rows    if r.get("is_new"))
@@ -1683,6 +1713,7 @@ def main() -> None:
         pride_rows    = collapse_recurring_timeslots(pride_rows)
         ice_rows      = collapse_recurring_timeslots(ice_rows)
         election_rows = collapse_recurring_timeslots(election_rows)
+        labor_rows    = collapse_recurring_timeslots(labor_rows)
         print(f"  3-Day rows after collapse   : {len(general_rows)}")
         print(f"  No Kings rows after collapse: {len(no_kings_rows)}")
         print(f"  Pride rows after collapse   : {len(pride_rows)}")
@@ -1708,6 +1739,7 @@ def main() -> None:
             "pride":             len(pride_rows),
             "ice":               len(ice_rows),
             "elections":         len(election_rows),
+            "labor":             len(labor_rows),
             "new_3day":          new_g,
             "new_no_kings":      new_nk,
             "new_pride":         new_pd,
@@ -1720,7 +1752,7 @@ def main() -> None:
     print("\nBuilding Excel workbook …")
     build_excel(general_rows, no_kings_rows, pride_rows, args.output, ice_rows=ice_rows)
     build_dashboard_json(general_rows, no_kings_rows, pride_rows, ice_rows=ice_rows,
-                         election_rows=election_rows)
+                         election_rows=election_rows, labor_rows=labor_rows)
     print("Done.\n")
 
 
