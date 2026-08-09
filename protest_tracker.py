@@ -75,6 +75,39 @@ ELECTION_END_DATE = datetime(2026, 11, 30, 23, 59, 59, tzinfo=_EASTERN)
 LABOR_DAY_START = datetime(2026, 9, 4, 0, 0, 0, tzinfo=_EASTERN)
 LABOR_DAY_END   = datetime(2026, 9, 7, 23, 59, 59, tzinfo=_EASTERN)
 
+# Mall Mentions — events whose title/description/venue mention a shopping
+# center generically ("mall", "town center", "plaza", …) or one of OUR
+# properties by name (names loaded from properties.csv at runtime).
+# Word-boundary regex so "mall" never fires inside "small", "mills" never
+# inside "windmills", etc.  Longer phrases first so they win the match.
+MALL_TERMS_RE = re.compile(
+    r"\b(shopping mall|shopping center|shopping centre|shopping district|"
+    r"retail center|town center|town centre|premium outlets|outlet mall|"
+    r"food court|galleria|mall|malls|outlets|plaza|mills|square)\b",
+    re.IGNORECASE)
+
+
+def mall_match_terms(event: dict, prop_names: list[str]) -> list[str]:
+    """Return the distinct mall-related terms / property names an event
+    mentions in its title, description, or venue string ([] = no match)."""
+    text = " ".join([
+        event.get("title") or "",
+        event.get("description") or "",
+        event_location_str(event.get("location") or {}),
+    ]).lower()
+    hits: list[str] = []
+    seen: set[str] = set()
+    for m in MALL_TERMS_RE.finditer(text):
+        term = m.group(0).lower()
+        if term not in seen:
+            seen.add(term)
+            hits.append(term)
+    for name in prop_names:
+        if name in text and name not in seen:
+            seen.add(name)
+            hits.append(name)
+    return hits
+
 NO_KINGS_KEYWORDS = [
     "no kings", "nokings", "no_kings", "#nokings", "50501",
     # June 14, 2026 "Rise Up, Sing Out" action — Concert for the First Amendment
@@ -732,6 +765,8 @@ def collect_events(
       no_kings_rows – No Kings events within DAYS_NO_KINGS days
       pride_rows    – Pride Month events between now and PRIDE_END_DATE
       labor_rows    – all events during Labor Day weekend (Sep 4–7, 2026)
+      mall_rows     – events mentioning a mall/shopping center or one of
+                      our properties by name (mall_terms notes the match)
     All lists are sorted by event start time.
     """
     now_ts   = int(datetime.now(tz=timezone.utc).timestamp())
@@ -755,10 +790,17 @@ def collect_events(
     no_kings_rows: list[dict] = []
     pride_rows:    list[dict] = []
     labor_rows:    list[dict] = []
+    mall_rows:     list[dict] = []
     seen_general:  set[tuple] = set()
     seen_no_kings: set[tuple] = set()
     seen_pride:    set[tuple] = set()
     seen_labor:    set[tuple] = set()
+    seen_mall:     set[tuple] = set()
+
+    # Property names for the Mall Mentions matcher (skip very short names —
+    # too likely to appear in unrelated text by accident).
+    mall_prop_names = [p["name"].strip().lower() for p in properties
+                       if len(p["name"].strip()) >= 5]
 
     stats = {"no_coords": 0, "too_far": 0, "excluded_type": 0,
              "outside_window": 0, "passed": 0}
@@ -776,6 +818,7 @@ def collect_events(
             etype_raw = (ev.get("event_type") or "OTHER").upper()
             no_kings  = is_no_kings(ev)
             pride     = is_pride(ev) or (eid in pride_tagged)
+            mall_hits = mall_match_terms(ev, mall_prop_names)
             for prop in cluster:
                 rows = expand_event(ev, prop, stats)
                 if not rows:
@@ -817,6 +860,15 @@ def collect_events(
                             seen_labor.add(lb_key)
                             labor_rows.append(row)
 
+                    # Mall Mentions bucket — event text names a shopping
+                    # center generically or one of our properties by name.
+                    if mall_hits and etype_raw not in EXCLUDE_TYPES:
+                        ml_key = (_loc_key(row), row["event_dt_sort"], prop["id"])
+                        if ml_key not in seen_mall:
+                            seen_mall.add(ml_key)
+                            row["mall_terms"] = ", ".join(mall_hits)
+                            mall_rows.append(row)
+
     # ── Query every cluster (handles rate-limit retries internally) ────────────
     _run_cluster_queries(clusters, now_ts, api_end, process_events)
 
@@ -832,7 +884,8 @@ def collect_events(
     no_kings_rows.sort(key=lambda r: r["event_dt_sort"])
     pride_rows.sort(key=lambda r: r["event_dt_sort"])
     labor_rows.sort(key=lambda r: r["event_dt_sort"])
-    return general_rows, no_kings_rows, pride_rows, labor_rows
+    mall_rows.sort(key=lambda r: r["event_dt_sort"])
+    return general_rows, no_kings_rows, pride_rows, labor_rows, mall_rows
 
 
 def collect_ice_events(detention_centers: list[dict]) -> list[dict]:
@@ -1483,12 +1536,14 @@ def build_dashboard_json(general_rows: list[dict], no_kings_rows: list[dict],
                           output_path: str = "dashboard_data.json",
                           ice_rows: list[dict] | None = None,
                           election_rows: list[dict] | None = None,
-                          labor_rows: list[dict] | None = None) -> None:
+                          labor_rows: list[dict] | None = None,
+                          mall_rows: list[dict] | None = None) -> None:
     import json as _json
     pride_rows = pride_rows or []
     ice_rows = ice_rows or []
     election_rows = election_rows or []
     labor_rows = labor_rows or []
+    mall_rows = mall_rows or []
     now = datetime.now(_EASTERN)
     end_3d  = (now + timedelta(days=DAYS_GENERAL)).strftime("%B %d, %Y")
     end_30d = (now + timedelta(days=DAYS_NO_KINGS)).strftime("%B %d, %Y")
@@ -1500,7 +1555,8 @@ def build_dashboard_json(general_rows: list[dict], no_kings_rows: list[dict],
                         "sponsor_name", "sponsor_email", "sponsor_phone", "sponsor_website",
                         "featured_image_url", "description", "tags", "is_virtual",
                         "accessibility_notes", "all_timeslots", "rsvp_count",
-                        "first_seen_iso", "nearest_prop_name", "nearest_prop_dist_mi"]
+                        "first_seen_iso", "nearest_prop_name", "nearest_prop_dist_mi",
+                        "mall_terms"]
 
     def _clean(rows):
         out = []
@@ -1543,6 +1599,11 @@ def build_dashboard_json(general_rows: list[dict], no_kings_rows: list[dict],
             "title": "Labor Day Weekend 2026",
             "subtitle": f"{LABOR_DAY_START.strftime('%B %d')} – {LABOR_DAY_END.strftime('%B %d, %Y')}  •  Within {SEARCH_RADIUS_MI} miles of a property  •  All event themes",
             "rows": _clean(labor_rows),
+        },
+        "mall": {
+            "title": "Mall Mentions",
+            "subtitle": f"{now.strftime('%B %d, %Y')}  through  {end_30d}  •  Within {SEARCH_RADIUS_MI} miles of a property  •  Event text mentions a shopping center or one of our properties",
+            "rows": _clean(mall_rows),
         },
     }
     update_trend_data(general_rows, no_kings_rows, pride_rows, ice_rows=ice_rows)
@@ -1622,6 +1683,7 @@ def main() -> None:
         ice_rows      = collapse_recurring_timeslots(ice_rows)
         election_rows = []   # elections stream is dashboard-only and not cached
         labor_rows    = []   # labor day stream is dashboard-only and not cached
+        mall_rows     = []   # mall mentions stream is dashboard-only and not cached
     else:
         print(f"  Properties CSV : {args.csv}")
         print(f"  Output file    : {args.output}")
@@ -1660,7 +1722,7 @@ def main() -> None:
               f"dashboard=+{len(first_seen_map) - n_after_ledger} "
               f"→ {len(first_seen_map)} known event IDs")
 
-        general_rows, no_kings_rows, pride_rows, labor_rows = collect_events(properties)
+        general_rows, no_kings_rows, pride_rows, labor_rows, mall_rows = collect_events(properties)
 
         # ── ICE detention center protests (separate anchor set) ────────────
         detention_centers = load_properties(args.detention_csv) \
@@ -1685,6 +1747,7 @@ def main() -> None:
         print(f"  ICE events found          : {len(ice_rows)} facility-event rows")
         print(f"  Election events found     : {len(election_rows)} property-event rows")
         print(f"  Labor Day wknd events     : {len(labor_rows)} property-event rows")
+        print(f"  Mall-mention events       : {len(mall_rows)} property-event rows")
         print(f"{'─'*64}")
 
         print("\nAnnotating event flags (new / duplicate / recurring) …")
@@ -1694,6 +1757,7 @@ def main() -> None:
         annotate_event_flags(ice_rows,      first_seen_map, now_iso)
         annotate_event_flags(election_rows, first_seen_map, now_iso)
         annotate_event_flags(labor_rows,    first_seen_map, now_iso)
+        annotate_event_flags(mall_rows,     first_seen_map, now_iso)
         new_g  = sum(1 for r in general_rows  if r.get("is_new"))
         new_nk = sum(1 for r in no_kings_rows if r.get("is_new"))
         new_pd = sum(1 for r in pride_rows    if r.get("is_new"))
@@ -1714,6 +1778,7 @@ def main() -> None:
         ice_rows      = collapse_recurring_timeslots(ice_rows)
         election_rows = collapse_recurring_timeslots(election_rows)
         labor_rows    = collapse_recurring_timeslots(labor_rows)
+        mall_rows     = collapse_recurring_timeslots(mall_rows)
         print(f"  3-Day rows after collapse   : {len(general_rows)}")
         print(f"  No Kings rows after collapse: {len(no_kings_rows)}")
         print(f"  Pride rows after collapse   : {len(pride_rows)}")
@@ -1740,6 +1805,7 @@ def main() -> None:
             "ice":               len(ice_rows),
             "elections":         len(election_rows),
             "labor":             len(labor_rows),
+            "mall":              len(mall_rows),
             "new_3day":          new_g,
             "new_no_kings":      new_nk,
             "new_pride":         new_pd,
@@ -1752,7 +1818,8 @@ def main() -> None:
     print("\nBuilding Excel workbook …")
     build_excel(general_rows, no_kings_rows, pride_rows, args.output, ice_rows=ice_rows)
     build_dashboard_json(general_rows, no_kings_rows, pride_rows, ice_rows=ice_rows,
-                         election_rows=election_rows, labor_rows=labor_rows)
+                         election_rows=election_rows, labor_rows=labor_rows,
+                         mall_rows=mall_rows)
     print("Done.\n")
 
 
