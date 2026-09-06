@@ -1,0 +1,1976 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Protest Tracker v2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  html,body,#root{height:100%;overflow:hidden}
+  body{font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+  ::-webkit-scrollbar{width:6px;height:6px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08);border-radius:3px}
+  ::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.15)}
+  button,input{font-family:inherit}
+  input::placeholder{color:#6c7280}
+  .leaflet-popup-content{font-family:'Inter',sans-serif;font-size:12px;line-height:1.5}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useRef,useMemo,useCallback} = React;
+
+/* ═══ SUPABASE CONFIG ══════════════════════════════════════════ */
+/* Fill these three values after creating your Supabase project
+   (Settings → API).  The anon key is safe to expose publicly — access is
+   controlled by Auth + Row-Level-Security, so the SHARED password is the
+   real gate.  Until these are filled with real values the app falls back to
+   loading the public dashboard_data.json with no login (local-dev mode).   */
+const SUPABASE_URL      = "https://dkeaeprelbhdabnvcsqc.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRrZWFlcHJlbGJoZGFibnZjc3FjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0NTQ5MzcsImV4cCI6MjA5NjAzMDkzN30.Ehir5laOAKidIO8WU2yl2IoAslNqtLC3c6TVu4KJl_o";
+const SHARED_EMAIL      = "lordnader2002@gmail.com";  // the single shared login account
+const DATA_BUCKET       = "dashboard";               // private Storage bucket
+const DATA_OBJECT       = "dashboard_data.json";
+
+const SB_READY = !SUPABASE_URL.includes("YOUR-PROJECT") && !SUPABASE_ANON_KEY.includes("YOUR-ANON");
+const sb = (SB_READY && window.supabase)
+  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
+
+/* ═══ TWEAKS ═══════════════════════════════════════════════════ */
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{"variant":"midnight"}/*EDITMODE-END*/;
+
+const THEMES = {
+  midnight:{label:'MIDNIGHT',desc:'Dark base — lime accent',
+    sidebar:'#0a0e14',sidebarHover:'#13171f',sidebarActive:'#1a1f28',sidebarBorder:'#171c24',
+    sidebarText:'#6c7280',sidebarHead:'#e8eaed',accent:'#a3e635',accentBg:'rgba(163,230,53,.10)',
+    bg:'#0a0e14',surface:'#13161c',border:'#1c222b',borderStrong:'#2d343f',
+    text:'#e8eaed',textSub:'#9ca3af',textMuted:'#6c7280',
+    critical:'#ef4444',high:'#f97316',medium:'#eab308',low:'#22c55e'},
+  daylight:{label:'DAYLIGHT',desc:'Clean light — lime accent',
+    sidebar:'#0a0e14',sidebarHover:'#13171f',sidebarActive:'#1a1f28',sidebarBorder:'#171c24',
+    sidebarText:'#6c7280',sidebarHead:'#e8eaed',accent:'#65a30d',accentBg:'rgba(101,163,13,.10)',
+    bg:'#f7f8fa',surface:'#fff',border:'#e5e7eb',borderStrong:'#d1d5db',
+    text:'#111827',textSub:'#4b5563',textMuted:'#9ca3af',
+    critical:'#dc2626',high:'#ea580c',medium:'#ca8a04',low:'#16a34a'},
+};
+
+const mono={fontFamily:"'JetBrains Mono',ui-monospace,monospace",fontFeatureSettings:"'tnum' 1,'cv11' 1"};
+const bandColor=(dist)=>dist<1?'critical':dist<2?'high':'low';
+const threatColor=(t,lv)=>({critical:t.critical,high:t.high,medium:t.medium,low:t.low})[lv]||t.textMuted;
+
+/* ═══ SMALL COMPONENTS ═════════════════════════════════════════ */
+const Sparkline=({data,color,w=80,h=28})=>{
+  if(!data||data.length<2) return null;
+  const max=Math.max(...data),min=Math.min(...data),r=max-min||1;
+  const pts=data.map((v,i)=>`${(i/(data.length-1))*w},${h-2-((v-min)/r)*(h-6)}`).join(' ');
+  return <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{display:'block'}}>
+    <polygon points={`${pts} ${w},${h} 0,${h}`} fill={`${color}30`}/>
+    <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>;
+};
+
+const MiniBar=({value,max,color,t})=><div style={{height:6,background:t?.border||'rgba(128,128,128,.2)',borderRadius:2}}>
+  <div style={{width:`${(value/max)*100}%`,height:'100%',background:color,borderRadius:2,transition:'width .4s ease'}}/>
+</div>;
+
+const Pill=({level,t})=>{const c=threatColor(t,level);return <span style={{
+  ...mono,display:'inline-block',fontSize:9,fontWeight:600,letterSpacing:'.07em',
+  padding:'2px 7px',borderRadius:2,background:`${c}16`,color:c,
+  textTransform:'uppercase',border:`1px solid ${c}30`}}>{level}</span>;};
+
+const DistPill=({dist,t})=>{
+  const lv=dist<1?'critical':dist<2?'high':'low';
+  const labels={critical:'< 1 mi',high:'1-2 mi',low:'> 2 mi'};
+  return <Pill level={labels[lv]||lv} t={{...t,critical:t.critical,high:t.high,low:t.low}}/>;
+};
+
+const ICON_PATHS={
+  dashboard:"M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm11 0h7v7h-7z",
+  events3:"M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4",
+  nogo:"M12 2a10 10 0 100 20A10 10 0 0012 2zM4.93 4.93l14.14 14.14",
+  pride:"M2 12c0-5.5 4.5-10 10-10s10 4.5 10 10M2 17c0-2.8 4.5-5 10-5s10 2.2 10 5M2 22c0-1.4 4.5-2.5 10-2.5s10 1.1 10 2.5",
+  map:"M1 6l7-4 8 4 7-4v16l-7 4-8-4-7 4V6z",
+  timeline:"M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z",
+  organizers:"M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 7a4 4 0 100 8 4 4 0 000-8zm8 4l2 2 4-4",
+  trends:"M22 12h-4l-3 9L9 3l-3 9H2",
+  threat:"M12 22c5-1 9-5 9-10V5l-9-3-9 3v7c0 5 4 9 9 10zM12 8v4M12 16h.01",
+  property:"M3 21h18M5 21V7l8-4v18M19 21V11l-6-4",
+  ice:"M3 21h18M5 21V8l7-4 7 4v13M9 21v-4h6v4M8 11h.01M12 11h.01M16 11h.01M8 14h.01M12 14h.01M16 14h.01",
+  tracked:"M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11",
+  logout:"M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9",
+  search:"M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z",
+  switchDash:"M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7",
+  sun:"M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41M12 7a5 5 0 100 10 5 5 0 000-10z",
+  moon:"M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z",
+};
+const Icon=({id,size=16})=><svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+  stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+  <path d={ICON_PATHS[id]}/></svg>;
+
+/* ═══ DATA LOADER ══════════════════════════════════════════════ */
+/* When Supabase is configured, the dashboard data lives in a PRIVATE bucket
+   and is downloaded with the authenticated session (so it 404s for the public).
+   `authed` gates the fetch — we only pull data once the user is logged in.
+   Without Supabase configured we fall back to the public file for local dev. */
+function useData(authed){
+  const [data,setData]=useState(null);
+  const [err,setErr]=useState(null);
+  useEffect(()=>{
+    let cancelled=false;
+    async function load(){
+      try{
+        let json;
+        if(sb){
+          if(!authed) return;                 // wait until logged in
+          const {data:blob,error}=await sb.storage.from(DATA_BUCKET).download(DATA_OBJECT);
+          if(error) throw new Error(error.message||'download failed');
+          json=JSON.parse(await blob.text());
+        }else{
+          const r=await fetch('dashboard_data.json');
+          if(!r.ok) throw new Error(`HTTP ${r.status}`);
+          json=await r.json();
+        }
+        if(!cancelled) setData(json);
+      }catch(e){ if(!cancelled) setErr(e.message); }
+    }
+    load();
+    return ()=>{cancelled=true;};
+  },[authed]);
+  return {data,err};
+}
+
+/* ═══ AUTH ═════════════════════════════════════════════════════ */
+/* Single shared-password gate via Supabase Auth. When Supabase is not
+   configured the gate is disabled (local-dev mode) and `authed` is true. */
+function useAuth(){
+  const [session,setSession]=useState(undefined);   // undefined = still loading
+  useEffect(()=>{
+    if(!sb){ setSession(null); return; }
+    sb.auth.getSession().then(({data})=>setSession(data.session||null));
+    const {data:sub}=sb.auth.onAuthStateChange((_e,s)=>setSession(s));
+    return ()=>sub.subscription.unsubscribe();
+  },[]);
+  return {
+    session,
+    authed:  sb ? !!session : true,
+    loading: sb ? session===undefined : false,
+    login:   (password)=>sb.auth.signInWithPassword({email:SHARED_EMAIL,password}),
+    logout:  ()=>sb&&sb.auth.signOut(),
+  };
+}
+
+/* ═══ TRACKED PRODUCTS STORE ═══════════════════════════════════ */
+/* Offline-first: localStorage cache for instant UI + best-effort cloud sync.
+   Keyed by event_id (whole-event granularity) so checking any row marks the
+   event everywhere it appears. Never auto-removed — manual uncheck only. */
+const STREAM_LABEL={'3day':'General','nogo':'No Kings',pride:'Pride',ice:'ICE',tracked:''};
+function eventKey(ev){
+  return (ev.event_id && String(ev.event_id))
+    || `${ev.event_title||''}|${ev.event_date||ev.event_dt_sort||''}`;
+}
+function useTracked(authed){
+  const LS_KEY='pt2_tracked';
+  const [items,setItems]=useState(()=>{try{return JSON.parse(localStorage.getItem(LS_KEY)||'{}')}catch{return{}}});
+  const noteTimers=useRef({});
+  const save=(next)=>{setItems(next);try{localStorage.setItem(LS_KEY,JSON.stringify(next))}catch{}};
+
+  // Pull the authoritative list from the cloud once logged in.
+  useEffect(()=>{
+    if(!sb||!authed) return;
+    let cancelled=false;
+    (async()=>{
+      const {data,error}=await sb.from('tracked_events').select('*');
+      if(error||cancelled||!data) return;
+      const map={};
+      for(const r of data) map[r.event_id]={event_id:r.event_id,snapshot:r.snapshot||{},
+        note:r.note||'',streams:r.streams||[],checked_at:r.checked_at};
+      save(map);
+    })();
+    return ()=>{cancelled=true;};
+  },[authed]);
+
+  const toggle=(ev,type)=>{
+    const k=eventKey(ev);
+    const next={...items};
+    if(next[k]){
+      delete next[k]; save(next);
+      if(sb) sb.from('tracked_events').delete().eq('event_id',k).then(()=>{});
+    }else{
+      const stream=STREAM_LABEL[type]||'';
+      const rec={event_id:k,snapshot:ev,note:'',streams:stream?[stream]:[],checked_at:new Date().toISOString()};
+      next[k]=rec; save(next);
+      if(sb) sb.from('tracked_events').upsert({...rec,updated_at:rec.checked_at}).then(()=>{});
+    }
+  };
+
+  const setNote=(k,text)=>{
+    const cur=items[k]; if(!cur) return;
+    save({...items,[k]:{...cur,note:text}});
+    if(sb){
+      clearTimeout(noteTimers.current[k]);
+      noteTimers.current[k]=setTimeout(()=>{
+        sb.from('tracked_events').update({note:text,updated_at:new Date().toISOString()}).eq('event_id',k).then(()=>{});
+      },600);
+    }
+  };
+
+  const ids=useMemo(()=>new Set(Object.keys(items)),[items]);
+  return {items,ids,toggle,setNote,has:(ev)=>ids.has(eventKey(ev)),count:ids.size};
+}
+
+function parseIso(s){if(!s) return 0;const t=new Date(s).getTime();return isNaN(t)?0:t;}
+function relTime(iso){
+  const t=parseIso(iso);if(!t) return '';
+  const ms=Date.now()-t;if(ms<0) return 'just now';
+  const m=Math.floor(ms/60000),h=Math.floor(ms/3600000),d=Math.floor(ms/86400000);
+  if(m<1) return 'just now';
+  if(m<60) return `${m}m ago`;
+  if(h<24) return `${h}h ago`;
+  if(d<7)  return `${d}d ago`;
+  return new Date(t).toLocaleDateString('en-US',{month:'short',day:'numeric'});
+}
+const NEW_CUTOFF_MS=Date.now()-7*24*3600*1000;
+function computeBootstrapTs(allRows){
+  // If a large cohort of events share a single first_seen_iso timestamp
+  // (within 60s of each other), that timestamp is a bootstrap/reseed
+  // moment — not genuine discoveries. Events at that timestamp should
+  // NOT be counted as "new".
+  const buckets={};
+  for(const r of allRows){
+    const t=parseIso(r.first_seen_iso);
+    if(!t) continue;
+    const bucket=Math.floor(t/60000); // 1-minute buckets
+    buckets[bucket]=(buckets[bucket]||0)+1;
+  }
+  const entries=Object.entries(buckets);
+  if(!entries.length) return null;
+  const [topBucket,topCount]=entries.reduce((a,b)=>a[1]>=b[1]?a:b);
+  // Require ≥60% of events in one minute to call it a bootstrap cohort
+  if(topCount/allRows.length>=0.6) return parseInt(topBucket)*60000;
+  return null;
+}
+let BOOTSTRAP_TS=null;
+function isNewRow(r){
+  const t=parseIso(r.first_seen_iso);
+  if(t<=0 || t<=NEW_CUTOFF_MS) return false;
+  if(BOOTSTRAP_TS && Math.abs(t-BOOTSTRAP_TS)<60000) return false;
+  return true;
+}
+
+function deriveStats(data){
+  if(!data) return null;
+  const gen=data.general?.rows||[], nk=data.no_kings?.rows||[], pd=data.pride?.rows||[];
+  // ICE detention protests are anchored on detention centers, NOT company
+  // properties — kept out of `all` so company Threat Watch / property / organizer
+  // aggregations are unaffected.
+  const ice=data.ice?.rows||[];
+  const elections=data.elections?.rows||[];
+  const labor=data.labor?.rows||[];
+  const mall=data.mall?.rows||[];
+  const all=[...gen,...nk,...pd];
+  BOOTSTRAP_TS=computeBootstrapTs(all);
+  const newCount=all.filter(isNewRow).length;
+  const dupCount=all.filter(r=>(r.is_duplicate||'').toLowerCase()==='yes').length;
+  const recCount=all.filter(r=>(r.is_recurring||'').toLowerCase()==='yes').length;
+
+  // Event types
+  const typeMap={};
+  all.forEach(r=>{const t=r.event_type||'Unknown';typeMap[t]=(typeMap[t]||0)+1;});
+  const types=Object.entries(typeMap).map(([name,count])=>({name,count})).sort((a,b)=>b.count-a.count);
+
+  // Top properties
+  const propMap={};
+  all.forEach(r=>{const p=r.property_name||'Unknown';propMap[p]=(propMap[p]||0)+1;});
+  const allProps=Object.entries(propMap).map(([name,count])=>({name,count})).sort((a,b)=>b.count-a.count);
+  const totalPropCount=allProps.length;
+  const props=allProps.slice(0,10);
+
+  // Proximity bands
+  const bands={red:0,amber:0,green:0};
+  gen.forEach(r=>{const d=parseFloat(r.distance_mi)||99;if(d<1)bands.red++;else if(d<2)bands.amber++;else bands.green++;});
+  const bandsNK={red:0,amber:0,green:0};
+  nk.forEach(r=>{const d=parseFloat(r.distance_mi)||99;if(d<1)bandsNK.red++;else if(d<2)bandsNK.amber++;else bandsNK.green++;});
+  const bandsPD={red:0,amber:0,green:0};
+  pd.forEach(r=>{const d=parseFloat(r.distance_mi)||99;if(d<1)bandsPD.red++;else if(d<2)bandsPD.amber++;else bandsPD.green++;});
+  const bandsICE={red:0,amber:0,green:0};
+  ice.forEach(r=>{const d=parseFloat(r.distance_mi)||99;if(d<1)bandsICE.red++;else if(d<2)bandsICE.amber++;else bandsICE.green++;});
+
+  // Within ½ Mile — highest priority list
+  const halfMile=all.filter(r=>(parseFloat(r.distance_mi)||99)<0.5)
+    .sort((a,b)=>(parseFloat(a.distance_mi)||99)-(parseFloat(b.distance_mi)||99));
+
+  // Threat level
+  const closeCount=all.filter(r=>(parseFloat(r.distance_mi)||99)<0.5).length;
+  const threat=closeCount>=5?'critical':closeCount>=3?'high':closeCount>=1?'medium':'low';
+
+  // Map markers
+  const markers=[];
+  const seen=new Set();
+  all.forEach(r=>{
+    const lat=parseFloat(r.event_lat),lon=parseFloat(r.event_lon);
+    if(!lat||!lon) return;
+    const key=`${lat.toFixed(3)},${lon.toFixed(3)}`;
+    if(seen.has(key)){
+      const m=markers.find(x=>x.key===key);
+      if(m) m.count++;
+      return;
+    }
+    seen.add(key);
+    const dist=parseFloat(r.distance_mi)||99;
+    markers.push({key,lat,lon,name:r.event_title,type:r.event_type,
+      threat:dist<1?'critical':dist<2?'high':'low',count:1,dist});
+  });
+  // ICE detention protests on the map (tagged so they can be styled distinctly)
+  ice.forEach(r=>{
+    const lat=parseFloat(r.event_lat),lon=parseFloat(r.event_lon);
+    if(!lat||!lon) return;
+    const key=`ice:${lat.toFixed(3)},${lon.toFixed(3)}`;
+    if(seen.has(key)){const m=markers.find(x=>x.key===key);if(m)m.count++;return;}
+    seen.add(key);
+    const dist=parseFloat(r.distance_mi)||99;
+    markers.push({key,lat,lon,name:r.event_title,type:r.event_type,stream:'ice',
+      threat:dist<1?'critical':dist<2?'high':'low',count:1,dist});
+  });
+
+  // Organizers
+  const orgMap={};
+  const tagStream=(r,src)=>{
+    const s=r.sponsor_name;if(!s)return;
+    if(!orgMap[s])orgMap[s]={count:0,types:new Set(),streams:{general:0,no_kings:0,pride:0},
+      website:'',email:'',phone:'',events:[],closeCount:0,minDist:Infinity};
+    const o=orgMap[s];
+    o.count++;
+    o.streams[src]++;
+    if(r.event_type)o.types.add(r.event_type);
+    if(!o.website&&r.sponsor_website)o.website=r.sponsor_website;
+    if(!o.email&&r.sponsor_email)o.email=r.sponsor_email;
+    if(!o.phone&&r.sponsor_phone)o.phone=r.sponsor_phone;
+    const d=parseFloat(r.distance_mi);
+    if(!isNaN(d)){if(d<o.minDist)o.minDist=d;if(d<1)o.closeCount++;}
+    o.events.push(r);
+  };
+  gen.forEach(r=>tagStream(r,'general'));
+  nk.forEach(r=>tagStream(r,'no_kings'));
+  pd.forEach(r=>tagStream(r,'pride'));
+  const orgs=Object.entries(orgMap).map(([name,v])=>({
+    name,count:v.count,
+    types:[...v.types].filter(Boolean).slice(0,4),
+    typesStr:[...v.types].filter(Boolean).join(', '),
+    streams:v.streams,
+    website:v.website,email:v.email,phone:v.phone,
+    closeCount:v.closeCount,
+    minDist:v.minDist===Infinity?null:v.minDist,
+    events:v.events.slice().sort((a,b)=>(parseFloat(a.distance_mi)||99)-(parseFloat(b.distance_mi)||99)),
+  })).sort((a,b)=>b.count-a.count);
+
+  // Full property profiles (one entry per unique property_name)
+  const propProfiles={};
+  const tagProp=(r,src)=>{
+    const name=r.property_name;if(!name)return;
+    if(!propProfiles[name])propProfiles[name]={
+      name, lat:parseFloat(r.prop_lat)||null, lon:parseFloat(r.prop_lon)||null,
+      events:[], streams:{general:0,no_kings:0,pride:0},
+      orgs:new Set(), types:new Set(),
+      closeCount:0, halfMileCount:0, minDist:Infinity, recurring:0, newCount:0,
+    };
+    const p=propProfiles[name];
+    p.events.push({...r,_src:src});
+    p.streams[src]++;
+    if(r.sponsor_name)p.orgs.add(r.sponsor_name);
+    if(r.event_type)p.types.add(r.event_type);
+    const d=parseFloat(r.distance_mi);
+    if(!isNaN(d)){
+      if(d<p.minDist)p.minDist=d;
+      if(d<1)p.closeCount++;
+      if(d<0.5)p.halfMileCount++;
+    }
+    if((r.is_recurring||'').toLowerCase()==='yes')p.recurring++;
+    if(isNewRow(r))p.newCount++;
+    if(!p.lat&&parseFloat(r.prop_lat))p.lat=parseFloat(r.prop_lat);
+    if(!p.lon&&parseFloat(r.prop_lon))p.lon=parseFloat(r.prop_lon);
+  };
+  gen.forEach(r=>tagProp(r,'general'));
+  nk.forEach(r=>tagProp(r,'no_kings'));
+  pd.forEach(r=>tagProp(r,'pride'));
+  const properties=Object.values(propProfiles).map(p=>({
+    ...p,
+    orgs:[...p.orgs],
+    types:[...p.types],
+    minDist:p.minDist===Infinity?null:p.minDist,
+    threat:p.closeCount>=5?'critical':p.closeCount>=3?'high':p.closeCount>=1?'medium':'low',
+    events:p.events.sort((a,b)=>(parseFloat(a.distance_mi)||99)-(parseFloat(b.distance_mi)||99)),
+  })).sort((a,b)=>b.events.length-a.events.length);
+
+  return {general:gen.length,noKings:nk.length,pride:pd.length,ice:ice.length,elections:elections.length,labor:labor.length,mall:mall.length,newCount,dupCount,recCount,
+    types,props,totalPropCount,bands,bandsNK,bandsPD,bandsICE,threat,closeCount,markers,orgs,halfMile,properties,
+    generated:data.generated||'',genSubtitle:data.general?.subtitle||'',
+    nkSubtitle:data.no_kings?.subtitle||'',pdSubtitle:data.pride?.subtitle||'',
+    iceSubtitle:data.ice?.subtitle||'',elecSubtitle:data.elections?.subtitle||'',
+    laborSubtitle:data.labor?.subtitle||'',mallSubtitle:data.mall?.subtitle||''};
+}
+
+/* ═══ SIDEBAR ══════════════════════════════════════════════════ */
+const NAV=[
+  {section:'DISCOVER'},
+  {id:'dashboard',label:'Summary'},
+  {id:'threat',label:'Threat Watch'},
+  {id:'mall',label:'Mall Mentions'},
+  {id:'events3',label:'General Events'},
+  {id:'nogo',label:'No Kings Events'},
+  {id:'ice',label:'ICE Detention'},
+  {id:'elections',label:'Political/Midterm Elections'},
+  // Auto-hides once the weekend has passed and the stream is empty
+  {id:'labor',label:'Labor Day Weekend',hideAfter:Date.parse('2026-09-08T04:00:00Z')},
+  {id:'tracked',label:'Product Tracker'},
+  {section:'ANALYTICS'},
+  {id:'map',label:'Map'},
+  {id:'timeline',label:'Timeline'},
+  {id:'organizers',label:'Organizers'},
+  {id:'trends',label:'Trends'},
+];
+
+function navBadge(id,stats,trackedCount){
+  if(id==='tracked') return trackedCount||null;
+  if(!stats) return null;
+  switch(id){
+    case 'dashboard':  return null;
+    case 'threat':     return stats.halfMile?.length;
+    case 'events3':    return stats.general;
+    case 'nogo':       return stats.noKings;
+    case 'ice':        return stats.ice;
+    case 'elections':  return stats.elections;
+    case 'labor':      return stats.labor;
+    case 'mall':       return stats.mall;
+    case 'map':        return stats.markers?.length;
+    case 'timeline':   return (stats.general||0)+(stats.noKings||0)+(stats.pride||0);
+    case 'organizers': return stats.orgs?.length;
+    default:           return null;
+  }
+}
+
+const Sidebar=({t,view,setView,stats,version,trackedCount,onLogout})=><aside style={{
+  width:224,flexShrink:0,display:'flex',flexDirection:'column',
+  background:t.sidebar,borderRight:`1px solid ${t.sidebarBorder}`,height:'100vh'}}>
+  {/* Brand */}
+  <div style={{padding:'18px 18px 16px'}}>
+    <div style={{display:'flex',alignItems:'center',gap:10}}>
+      <div style={{width:30,height:30,borderRadius:7,background:t.accent,flexShrink:0,
+        display:'flex',alignItems:'center',justifyContent:'center',
+        boxShadow:`0 0 0 1px ${t.accent}33,0 4px 14px ${t.accent}25`}}>
+        <span style={{...mono,fontSize:13,fontWeight:800,color:'#0a0e14',letterSpacing:'-.04em'}}>PT</span>
+      </div>
+      <div style={{lineHeight:1.15,minWidth:0}}>
+        <div style={{color:t.sidebarHead,fontSize:13,fontWeight:700,letterSpacing:'-.01em'}}>Protest Tracker</div>
+        <div style={{...mono,color:t.accent,fontSize:9.5,fontWeight:600,letterSpacing:'.05em',marginTop:1}}>{version||'v2.5'}</div>
+      </div>
+    </div>
+  </div>
+  {/* Nav */}
+  <nav style={{flex:1,padding:'2px 0 12px',overflowY:'auto'}}>
+    {NAV.map((item,i)=>{
+      // Time-boxed tabs (e.g. Labor Day weekend) disappear once their window
+      // has passed and no rows remain — no code change needed to retire them.
+      if(item.hideAfter&&Date.now()>item.hideAfter&&!(stats&&stats[item.id])) return null;
+      if(item.section) return <div key={`s${i}`} style={{
+        ...mono,fontSize:9.5,fontWeight:600,letterSpacing:'.14em',
+        color:`${t.sidebarText}b3`,padding:'14px 18px 6px'}}>{item.section}</div>;
+      const active=view===item.id;
+      const badge=navBadge(item.id,stats,trackedCount);
+      return <button key={item.id} onClick={()=>setView(item.id)} style={{
+        width:'calc(100% - 12px)',margin:'0 6px',display:'flex',alignItems:'center',gap:10,
+        padding:'8px 12px',borderRadius:6,
+        background:active?t.sidebarActive:'transparent',border:'none',
+        borderLeft:`2px solid ${active?t.accent:'transparent'}`,
+        color:active?t.sidebarHead:t.sidebarText,cursor:'pointer',
+        transition:'background .12s,color .12s',fontSize:13,fontWeight:active?600:500,textAlign:'left',
+        position:'relative'}}
+        onMouseEnter={e=>{if(!active){e.currentTarget.style.background=t.sidebarHover;e.currentTarget.style.color=t.sidebarHead;}}}
+        onMouseLeave={e=>{if(!active){e.currentTarget.style.background='transparent';e.currentTarget.style.color=t.sidebarText;}}}>
+        <Icon id={item.id} size={14}/>
+        <span style={{flex:1}}>{item.label}</span>
+        {badge!=null&&<span style={{
+          ...mono,fontSize:10,fontWeight:600,letterSpacing:'.02em',
+          color:active?t.accent:`${t.sidebarText}cc`,
+          padding:'2px 7px',borderRadius:4,minWidth:22,textAlign:'center',
+          background:active?`${t.accent}14`:'transparent'}}>{badge}</span>}
+      </button>;
+    })}
+  </nav>
+  {/* Footer */}
+  <div style={{padding:'10px 14px 14px',borderTop:`1px solid ${t.sidebarBorder}`}}>
+    {onLogout&&<button onClick={onLogout} style={{width:'100%',display:'flex',alignItems:'center',gap:8,
+      background:'transparent',border:'none',cursor:'pointer',color:t.sidebarText,fontSize:11.5,
+      padding:'7px 8px',borderRadius:5,textAlign:'left',transition:'background .12s,color .12s'}}
+      onMouseEnter={e=>{e.currentTarget.style.color=t.sidebarHead;e.currentTarget.style.background=t.sidebarHover;}}
+      onMouseLeave={e=>{e.currentTarget.style.color=t.sidebarText;e.currentTarget.style.background='transparent';}}>
+      <Icon id="logout" size={13}/>
+      <span>Log out</span>
+    </button>}
+  </div>
+</aside>;
+
+/* ═══ TOPBAR ═══════════════════════════════════════════════════ */
+const LABELS={dashboard:'Summary',threat:'Threat Watch',events3:'General Events',nogo:'No Kings Events',
+  pride:'Pride Month 2026',ice:'ICE Detention Centers',elections:'Political / Midterm Elections 2026',labor:'Labor Day Weekend 2026',mall:'Mall Mentions',tracked:'Product Tracker',map:'Map',timeline:'Timeline',
+  organizers:'Organizers',trends:'Trends',property:'Property'};
+
+function fmtBreadcrumbDate(generatedIso){
+  if(!generatedIso) return '';
+  try{
+    const d=new Date(generatedIso);
+    if(isNaN(d)) return '';
+    const wkd=d.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+    const hh=String(d.getHours()).padStart(2,'0');
+    const mm=String(d.getMinutes()).padStart(2,'0');
+    return `${wkd} at ${hh}${mm} ET`;
+  }catch{return '';}
+}
+
+const TopBar=({t,view,generatedIso,darkMode,handleDark,query,setQuery})=>{
+  return <div style={{
+    height:54,background:t.bg,borderBottom:`1px solid ${t.border}`,
+    display:'flex',alignItems:'center',padding:'0 22px',gap:14,flexShrink:0}}>
+    {/* Breadcrumb */}
+    <div style={{display:'flex',alignItems:'baseline',gap:8,minWidth:0}}>
+      <span style={{fontSize:14,fontWeight:600,color:t.text,letterSpacing:'-.01em'}}>{LABELS[view]||view}</span>
+      <span style={{color:t.textMuted,fontSize:13}}>/</span>
+      <span style={{...mono,fontSize:11.5,color:t.textMuted,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+        {fmtBreadcrumbDate(generatedIso)}
+      </span>
+    </div>
+    {/* Search */}
+    <div style={{marginLeft:'auto',position:'relative',width:380,maxWidth:'40vw'}}>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={t.textMuted} strokeWidth="2"
+        style={{position:'absolute',left:11,top:'50%',transform:'translateY(-50%)',pointerEvents:'none'}}>
+        <circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/>
+      </svg>
+      <input value={query||''} onChange={e=>setQuery&&setQuery(e.target.value)}
+        placeholder="Search by title, organizer, or property…"
+        style={{width:'100%',background:t.surface,border:`1px solid ${t.border}`,
+          borderRadius:7,padding:'8px 12px 8px 32px',fontSize:12.5,color:t.text,
+          outline:'none',transition:'border-color .12s,background .12s'}}
+        onFocus={e=>e.currentTarget.style.borderColor=t.accent}
+        onBlur={e=>e.currentTarget.style.borderColor=t.border}/>
+    </div>
+    {/* Theme toggle */}
+    <button onClick={handleDark} title={darkMode?'Switch to light':'Switch to dark'} style={{
+      background:'transparent',border:`1px solid ${t.border}`,borderRadius:7,
+      width:34,height:34,cursor:'pointer',color:t.textSub,
+      display:'flex',alignItems:'center',justifyContent:'center',transition:'all .12s'}}
+      onMouseEnter={e=>{e.currentTarget.style.color=t.text;e.currentTarget.style.borderColor=t.borderStrong;}}
+      onMouseLeave={e=>{e.currentTarget.style.color=t.textSub;e.currentTarget.style.borderColor=t.border;}}>
+      <Icon id={darkMode?'sun':'moon'} size={15}/>
+    </button>
+  </div>;
+};
+
+/* ═══ DASHBOARD ════════════════════════════════════════════════ */
+const StatCard=({t,label,value,sub,spark,color})=><div style={{
+  flex:1,minWidth:0,background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,padding:'18px 20px'}}>
+  <div style={{...mono,fontSize:9.5,fontWeight:600,letterSpacing:'.13em',textTransform:'uppercase',color:t.textMuted,marginBottom:12}}>{label}</div>
+  <div style={{display:'flex',alignItems:'flex-end',justifyContent:'space-between',gap:8}}>
+    <div style={{minWidth:0}}>
+      <div style={{...mono,fontSize:42,fontWeight:700,color:color||t.text,lineHeight:1,letterSpacing:'-.03em'}}>{value}</div>
+      {sub&&<div style={{fontSize:11,color:t.textMuted,marginTop:8}}>{sub}</div>}
+    </div>
+    {spark&&<Sparkline data={spark} color={color||t.accent}/>}
+  </div>
+</div>;
+
+const Hero=({t,stats,data,onDownloadCSV,onGoThreat})=>{
+  const total=(stats?.general||0)+(stats?.noKings||0)+(stats?.pride||0);
+  return <div style={{display:'flex',alignItems:'flex-end',justifyContent:'space-between',gap:24,
+    paddingBottom:6,borderBottom:`1px solid ${t.border}`,marginBottom:18}}>
+    <div style={{minWidth:0}}>
+      <div style={{...mono,fontSize:10,fontWeight:600,letterSpacing:'.18em',color:t.textMuted,marginBottom:10}}>
+        PROTEST TRACKER · 30-DAY WINDOW
+      </div>
+      <h1 style={{fontSize:38,fontWeight:700,color:t.text,letterSpacing:'-.025em',lineHeight:1.05,marginBottom:6}}>
+        <span style={{color:t.accent}}>{total}</span> events tracked
+      </h1>
+    </div>
+    <div style={{display:'flex',gap:8,flexShrink:0,paddingBottom:6}}>
+      <a href="protest_tracker_latest.xlsx" download style={{
+        ...mono,fontSize:11.5,fontWeight:600,letterSpacing:'.02em',
+        padding:'9px 14px',borderRadius:7,border:`1px solid ${t.border}`,
+        color:t.text,background:t.surface,cursor:'pointer',
+        textDecoration:'none',display:'inline-flex',alignItems:'center',gap:7,
+        transition:'background .12s,border-color .12s'}}
+        onMouseEnter={e=>{e.currentTarget.style.borderColor=t.borderStrong;}}
+        onMouseLeave={e=>{e.currentTarget.style.borderColor=t.border;}}>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+        </svg>
+        Excel report
+      </a>
+      <button onClick={()=>onDownloadCSV&&onDownloadCSV(data)} style={{
+        ...mono,fontSize:11.5,fontWeight:600,letterSpacing:'.02em',
+        padding:'9px 14px',borderRadius:7,border:`1px solid ${t.border}`,
+        color:t.text,background:t.surface,cursor:'pointer',
+        display:'inline-flex',alignItems:'center',gap:7,
+        transition:'background .12s,border-color .12s'}}
+        onMouseEnter={e=>{e.currentTarget.style.borderColor=t.borderStrong;}}
+        onMouseLeave={e=>{e.currentTarget.style.borderColor=t.border;}}>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8"/>
+        </svg>
+        Export CSV
+      </button>
+      <button onClick={onGoThreat} style={{
+        ...mono,fontSize:11.5,fontWeight:700,letterSpacing:'.02em',
+        padding:'9px 16px',borderRadius:7,border:`1px solid ${t.accent}`,
+        color:'#0a0e14',background:t.accent,cursor:'pointer',
+        display:'inline-flex',alignItems:'center',gap:7,
+        transition:'transform .12s,box-shadow .12s',boxShadow:`0 0 0 0 ${t.accent}00`}}
+        onMouseEnter={e=>{e.currentTarget.style.boxShadow=`0 0 0 4px ${t.accent}25`;}}
+        onMouseLeave={e=>{e.currentTarget.style.boxShadow=`0 0 0 0 ${t.accent}00`;}}>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+        </svg>
+        Threat Watch{stats?.halfMile?.length>0&&<span style={{padding:'1px 6px',borderRadius:99,background:'#0a0e14',color:t.accent,fontSize:10}}>{stats.halfMile.length}</span>}
+      </button>
+    </div>
+  </div>;
+};
+
+function buildCSV(data){
+  const CSV_FIELDS=[
+    'event_id','event_title','event_type','event_date','event_url',
+    'property_name','distance_mi','address','city','state','zip',
+    'sponsor_name','sponsor_email','sponsor_phone','sponsor_website',
+    'rsvp_count','is_new','is_duplicate','is_recurring',
+    'event_lat','event_lon','first_seen_iso','stream'
+  ];
+  const escape=v=>{
+    if(v==null) return '';
+    const s=String(v);
+    return s.includes(',')||s.includes('"')||s.includes('\n')?`"${s.replace(/"/g,'""')}"`:s;
+  };
+  const rows=[
+    ...(data?.general?.rows||[]).map(r=>({...r,stream:'general'})),
+    ...(data?.no_kings?.rows||[]).map(r=>({...r,stream:'no_kings'})),
+    ...(data?.pride?.rows||[]).map(r=>({...r,stream:'pride'})),
+  ];
+  const header=CSV_FIELDS.join(',');
+  const body=rows.map(r=>CSV_FIELDS.map(f=>escape(r[f])).join(',')).join('\n');
+  const blob=new Blob([header+'\n'+body],{type:'text/csv'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download=`protest_tracker_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();setTimeout(()=>URL.revokeObjectURL(url),5000);
+}
+
+const btnStyle=(t,accent)=>({
+  ...mono,fontSize:11,fontWeight:700,letterSpacing:'.06em',textTransform:'uppercase',
+  padding:'6px 14px',borderRadius:3,border:`1px solid ${accent||t.accent}`,
+  color:accent||t.accent,background:`${accent||t.accent}12`,cursor:'pointer',
+  textDecoration:'none',display:'inline-flex',alignItems:'center',gap:6,
+  transition:'background .15s',
+});
+
+const Dashboard=({t,stats,data,onOpenProperty,onGoThreat})=>{
+  const [selected,setSelected]=useState(null);
+  if(!stats) return <div style={{padding:40,textAlign:'center',color:t.textMuted}}>Loading…</div>;
+  const maxType=Math.max(...stats.types.map(x=>x.count),1);
+  const maxProp=Math.max(...stats.props.map(x=>x.count),1);
+  const typeColors=['#e74c3c','#e67e22','#f1c40f','#2ecc71','#3498db','#9b59b6','#e91e63','#00bcd4'];
+
+  return <div style={{padding:'24px 26px 26px',display:'flex',flexDirection:'column',gap:18}}>
+    <Hero t={t} stats={stats} data={data} onDownloadCSV={buildCSV} onGoThreat={onGoThreat}/>
+    {/* Stats */}
+    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(140px, 1fr))',gap:12}}>
+      <StatCard t={t} label="General Events" value={stats.general} sub="72-hour window" color={t.accent}/>
+      <StatCard t={t} label="No Kings" value={stats.noKings} sub="30-day window" color="#7c3aed"/>
+      <StatCard t={t} label="ICE Detention" value={stats.ice} sub="Near detention centers" color="#0891b2"/>
+      <StatCard t={t} label="Midterm Elections" value={stats.elections} sub="Through Nov 2026" color="#f59e0b"/>
+      <StatCard t={t} label="Labor Day Wknd" value={stats.labor} sub="Sep 4–7 · all themes" color="#e11d48"/>
+      <StatCard t={t} label="Mall Mentions" value={stats.mall} sub="Names a center or our property" color="#14b8a6"/>
+      <StatCard t={t} label="New (7 Days)" value={stats.newCount} sub="First seen &lt; 7 days ago" color={t.low}/>
+      <StatCard t={t} label="Duplicates" value={stats.dupCount} sub="Near 2+ properties" color={t.high}/>
+      <StatCard t={t} label="Recurring" value={stats.recCount} sub="Multiple timeslots" color={t.textMuted}/>
+    </div>
+
+    {/* Three columns */}
+    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:14}}>
+      {/* Proximity */}
+      <div style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,padding:18}}>
+        <div style={{...mono,fontSize:10,fontWeight:600,letterSpacing:'.12em',textTransform:'uppercase',color:t.textMuted,marginBottom:14}}>Proximity Breakdown</div>
+        {[{label:'General',b:stats.bands,color:t.accent},{label:'No Kings',b:stats.bandsNK,color:'#7c3aed'},{label:'ICE (to facility)',b:stats.bandsICE,color:'#0891b2'}].map(g=>{
+          const total=g.b.red+g.b.amber+g.b.green||1;
+          return <div key={g.label} style={{marginBottom:12}}>
+            <div style={{fontSize:10,fontWeight:700,color:t.textSub,marginBottom:6,textTransform:'uppercase',letterSpacing:'.06em'}}>{g.label}</div>
+            {[{label:'< 1 mi',val:g.b.red,color:t.critical},{label:'1-2 mi',val:g.b.amber,color:t.high},{label:'> 2 mi',val:g.b.green,color:t.low}].map(row=>
+              <div key={row.label} style={{display:'flex',alignItems:'center',gap:8,marginBottom:5}}>
+                <span style={{fontSize:11,color:t.textSub,width:42,flexShrink:0}}>{row.label}</span>
+                <div style={{flex:1,height:8,background:`${t.border}`,borderRadius:3,overflow:'hidden'}}>
+                  <div style={{width:`${(row.val/total)*100}%`,height:'100%',background:row.color,borderRadius:3,transition:'width .5s'}}/>
+                </div>
+                <span style={{...mono,fontSize:11,fontWeight:700,color:t.text,width:22,textAlign:'right'}}>{row.val}</span>
+              </div>
+            )}
+          </div>;
+        })}
+      </div>
+
+      {/* Top Properties */}
+      <div style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,padding:18}}>
+        <div style={{...mono,fontSize:10,fontWeight:600,letterSpacing:'.12em',textTransform:'uppercase',color:t.textMuted,marginBottom:14}}>Top Exposed Properties</div>
+        <div style={{display:'flex',flexDirection:'column',gap:10}}>
+          {stats.props.slice(0,8).map(p=><div key={p.name}>
+            <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
+              <span style={{fontSize:12,color:t.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:160}}>{p.name}</span>
+              <span style={{...mono,fontSize:11,fontWeight:600,color:t.text}}>{p.count}</span>
+            </div>
+            <MiniBar value={p.count} max={maxProp} color={t.accent} t={t}/>
+          </div>)}
+        </div>
+      </div>
+
+      {/* Event Types */}
+      <div style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,padding:18}}>
+        <div style={{...mono,fontSize:10,fontWeight:600,letterSpacing:'.12em',textTransform:'uppercase',color:t.textMuted,marginBottom:14}}>Event Types</div>
+        <div style={{display:'flex',flexDirection:'column',gap:10}}>
+          {stats.types.slice(0,8).map((c,i)=><div key={c.name}>
+            <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
+              <span style={{fontSize:12,color:t.text}}>{c.name}</span>
+              <span style={{...mono,fontSize:11,fontWeight:600,color:t.text}}>{c.count}</span>
+            </div>
+            <MiniBar value={c.count} max={maxType} color={typeColors[i%typeColors.length]} t={t}/>
+          </div>)}
+        </div>
+      </div>
+    </div>
+
+    {/* Two-column row: Within ½ Mile + New Events (last 24h) */}
+    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
+      {/* Within ½ Mile */}
+      <div id="half-mile" style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,padding:18,scrollMarginTop:16}}>
+        <div style={{...mono,fontSize:10,fontWeight:600,letterSpacing:'.12em',textTransform:'uppercase',color:t.textMuted,marginBottom:12,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+          <span>Within ½ Mile</span>
+          <span style={{...mono,fontSize:10,color:t.critical,fontWeight:700}}>{stats.halfMile.length}</span>
+        </div>
+        {(()=>{
+          const rows=stats.halfMile.slice(0,15);
+          if(!rows.length) return <div style={{fontSize:12,color:t.textMuted,textAlign:'center',padding:16}}>No events within ½ mile</div>;
+          return rows.map((ev,i)=>{
+            const dist=parseFloat(ev.distance_mi)||99;
+            return <div key={i} onClick={()=>setSelected(ev)}
+              style={{display:'flex',alignItems:'center',gap:10,padding:'10px 0',cursor:'pointer',
+              borderBottom:i<rows.length-1?`1px solid ${t.border}`:'none',borderRadius:4,transition:'background .1s'}}
+              onMouseEnter={e=>e.currentTarget.style.background=`${t.accent}09`}
+              onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+              <span style={{...mono,fontSize:12,fontWeight:700,color:t.critical,width:48,flexShrink:0}}>{dist.toFixed(2)}mi</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:13,color:t.text,fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ev.event_title}</div>
+                <div style={{fontSize:11,color:t.textSub,marginTop:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                  <span onClick={e=>{e.stopPropagation();onOpenProperty&&onOpenProperty(ev.property_name);}}
+                    style={{cursor:onOpenProperty?'pointer':'default',textDecoration:onOpenProperty?'underline dotted':'none',textUnderlineOffset:2}}
+                    onMouseEnter={e=>{if(onOpenProperty)e.currentTarget.style.color=t.accent;}}
+                    onMouseLeave={e=>{if(onOpenProperty)e.currentTarget.style.color='';}}>
+                    {ev.property_name}
+                  </span>
+                </div>
+              </div>
+              <span style={{...mono,fontSize:12,fontWeight:600,color:t.text,flexShrink:0,whiteSpace:'nowrap'}}>{ev.event_date}</span>
+            </div>;
+          });
+        })()}
+      </div>
+
+      {/* New Events (last 24h) */}
+      <div style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,padding:18}}>
+        <div style={{...mono,fontSize:10,fontWeight:600,letterSpacing:'.12em',textTransform:'uppercase',color:t.textMuted,marginBottom:12,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+          <span>New Events · Last 7 Days</span>
+          <span style={{...mono,fontSize:10,color:t.low,fontWeight:700}}>{stats.newCount}</span>
+        </div>
+        {(()=>{
+          const allRows=[...(data?.general?.rows||[]),...(data?.no_kings?.rows||[]),...(data?.pride?.rows||[])];
+          const newEvts=allRows
+            .filter(isNewRow)
+            .sort((a,b)=>parseIso(b.first_seen_iso)-parseIso(a.first_seen_iso))
+            .slice(0,15);
+          if(!newEvts.length) return <div style={{fontSize:12,color:t.textMuted,textAlign:'center',padding:16}}>No new events in the last 7 days</div>;
+          return newEvts.map((ev,i)=>{
+            const dist=parseFloat(ev.distance_mi)||99;
+            const c=dist<1?t.critical:dist<2?t.high:t.low;
+            const rel=relTime(ev.first_seen_iso);
+            return <div key={i} onClick={()=>setSelected(ev)}
+              style={{display:'flex',alignItems:'flex-start',gap:10,padding:'8px 0',cursor:'pointer',
+              borderBottom:i<newEvts.length-1?`1px solid ${t.border}`:'none',borderRadius:4,transition:'background .1s'}}
+              onMouseEnter={e=>e.currentTarget.style.background=`${t.accent}09`}
+              onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+              <span style={{...mono,fontSize:9,fontWeight:600,padding:'2px 7px',borderRadius:2,flexShrink:0,marginTop:1,
+                background:`${c}12`,color:c,border:`1px solid ${c}25`,textTransform:'uppercase'}}>{ev.event_type||'EVENT'}</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:12,color:t.text,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ev.event_title}</div>
+                <div style={{fontSize:10,color:t.textMuted,marginTop:2,display:'flex',gap:6,alignItems:'center'}}>
+                  <span onClick={e=>{e.stopPropagation();onOpenProperty&&onOpenProperty(ev.property_name);}}
+                    style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',minWidth:0,
+                    cursor:onOpenProperty?'pointer':'default',textDecoration:onOpenProperty?'underline dotted':'none',textUnderlineOffset:2}}
+                    onMouseEnter={e=>{if(onOpenProperty)e.currentTarget.style.color=t.accent;}}
+                    onMouseLeave={e=>{if(onOpenProperty)e.currentTarget.style.color='';}}>
+                    {ev.property_name} · {(dist).toFixed(1)} mi
+                  </span>
+                  {rel&&<span style={{...mono,color:t.low,fontWeight:700,flexShrink:0}}>• {rel}</span>}
+                </div>
+              </div>
+              <span style={{...mono,fontSize:12,fontWeight:600,color:t.text,flexShrink:0,whiteSpace:'nowrap'}}>{ev.event_date}</span>
+            </div>;
+          });
+        })()}
+      </div>
+    </div>
+    <EventModal t={t} ev={selected} onClose={()=>setSelected(null)}/>
+  </div>;
+};
+
+/* ═══ EVENT MODAL ══════════════════════════════════════════════ */
+const EventModal=({t,ev,onClose})=>{
+  useEffect(()=>{
+    if(!ev) return;
+    const onKey=e=>{if(e.key==='Escape') onClose();};
+    window.addEventListener('keydown',onKey);
+    const prev=document.body.style.overflow;
+    document.body.style.overflow='hidden';
+    return ()=>{window.removeEventListener('keydown',onKey);document.body.style.overflow=prev;};
+  },[ev,onClose]);
+  if(!ev) return null;
+  const dist=parseFloat(ev.distance_mi)||99;
+  const distColor=dist<1?t.critical:dist<2?t.high:t.low;
+  const fmtTs=iso=>{try{return new Date(iso).toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short'});}catch{return iso;}};
+  const copyUrl=()=>{if(!ev.event_url)return;navigator.clipboard?.writeText(ev.event_url);};
+  const slots=Array.isArray(ev.all_timeslots)?ev.all_timeslots:[];
+  const tags=Array.isArray(ev.tags)?ev.tags:[];
+
+  return <div onClick={onClose} style={{
+    position:'fixed',inset:0,background:'rgba(0,0,0,.62)',backdropFilter:'blur(3px)',
+    display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000,padding:24}}>
+    <div onClick={e=>e.stopPropagation()} style={{
+      background:t.surface,border:`1px solid ${t.border}`,borderRadius:6,
+      maxWidth:720,width:'100%',maxHeight:'90vh',overflowY:'auto',
+      boxShadow:'0 20px 60px rgba(0,0,0,.5)',position:'relative'}}>
+      {/* Hero */}
+      {ev.featured_image_url&&<div style={{
+        height:180,backgroundImage:`url(${ev.featured_image_url})`,
+        backgroundSize:'cover',backgroundPosition:'center',
+        borderBottom:`1px solid ${t.border}`,position:'relative'}}>
+        <div style={{position:'absolute',inset:0,background:`linear-gradient(to bottom, transparent 40%, ${t.surface})`,pointerEvents:'none'}}/>
+      </div>}
+      {/* Header */}
+      <div style={{padding:'18px 22px 14px',borderBottom:`1px solid ${t.border}`,position:'relative'}}>
+        <button onClick={onClose} title="Close (Esc)" style={{
+          position:'absolute',top:12,right:12,background:'transparent',
+          border:`1px solid ${t.border}`,color:t.textSub,width:28,height:28,
+          borderRadius:4,cursor:'pointer',fontSize:16,lineHeight:1,display:'flex',
+          alignItems:'center',justifyContent:'center'}}>×</button>
+        <div style={{display:'flex',gap:8,alignItems:'center',marginBottom:6,flexWrap:'wrap'}}>
+          <span style={{...mono,fontSize:9,fontWeight:700,padding:'3px 8px',borderRadius:2,
+            background:`${t.accent}18`,color:t.accent,border:`1px solid ${t.accent}35`,textTransform:'uppercase',letterSpacing:'.06em'}}>{ev.event_type||'Event'}</span>
+          <span style={{...mono,fontSize:10,fontWeight:700,padding:'3px 8px',borderRadius:2,
+            background:`${distColor}18`,color:distColor,border:`1px solid ${distColor}35`}}>{dist.toFixed(2)} mi</span>
+          {ev.is_virtual&&<span style={{...mono,fontSize:9,fontWeight:700,padding:'3px 8px',borderRadius:2,
+            background:`${t.textMuted}18`,color:t.textSub,border:`1px solid ${t.border}`,textTransform:'uppercase',letterSpacing:'.06em'}}>Virtual</span>}
+        </div>
+        <h2 style={{fontSize:18,fontWeight:700,color:t.text,marginRight:32,lineHeight:1.3}}>{ev.event_title||'Untitled'}</h2>
+        <p style={{fontSize:11,color:t.textMuted,marginTop:4}}>Near <span style={{color:t.text,fontWeight:600}}>{ev.property_name}</span></p>
+      </div>
+      {/* Meta grid */}
+      <div style={{padding:'14px 22px',borderBottom:`1px solid ${t.border}`,display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+        <div>
+          <div style={{...mono,fontSize:9,fontWeight:700,color:t.textMuted,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:3}}>Date / Time</div>
+          <div style={{fontSize:12,color:t.text}}>{ev.event_date||'—'}</div>
+        </div>
+        <div>
+          <div style={{...mono,fontSize:9,fontWeight:700,color:t.textMuted,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:3}}>Location</div>
+          <div style={{fontSize:12,color:t.text,wordBreak:'break-word'}}>{ev.event_location||'—'}</div>
+        </div>
+        {(ev.rsvp_count>0)&&<div>
+          <div style={{...mono,fontSize:9,fontWeight:700,color:t.textMuted,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:3}}>RSVPs</div>
+          <div style={{...mono,fontSize:16,fontWeight:700,color:dist<1?t.critical:dist<2?t.high:t.low}}>{ev.rsvp_count.toLocaleString()}</div>
+        </div>}
+      </div>
+      {/* Sponsor */}
+      {(ev.sponsor_name||ev.sponsor_email||ev.sponsor_phone||ev.sponsor_website)&&<div style={{padding:'14px 22px',borderBottom:`1px solid ${t.border}`}}>
+        <div style={{...mono,fontSize:9,fontWeight:700,color:t.textMuted,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:6}}>Sponsor / Organizer</div>
+        <div style={{fontSize:13,color:t.text,fontWeight:600,marginBottom:4}}>{ev.sponsor_name||'Unknown'}</div>
+        <div style={{display:'flex',flexWrap:'wrap',gap:12,fontSize:11}}>
+          {ev.sponsor_email&&<a href={`mailto:${ev.sponsor_email}`} style={{color:t.accent,textDecoration:'none'}}>✉ {ev.sponsor_email}</a>}
+          {ev.sponsor_phone&&<a href={`tel:${ev.sponsor_phone}`} style={{color:t.accent,textDecoration:'none'}}>☎ {ev.sponsor_phone}</a>}
+          {ev.sponsor_website&&<a href={ev.sponsor_website} target="_blank" rel="noopener" style={{color:t.accent,textDecoration:'none'}}>🔗 Website</a>}
+        </div>
+      </div>}
+      {/* Description */}
+      {ev.description&&<div style={{padding:'14px 22px',borderBottom:`1px solid ${t.border}`}}>
+        <div style={{...mono,fontSize:9,fontWeight:700,color:t.textMuted,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:6}}>Description</div>
+        <div style={{fontSize:12,color:t.text,lineHeight:1.55,whiteSpace:'pre-wrap',maxHeight:240,overflowY:'auto'}}>{ev.description}</div>
+      </div>}
+      {/* All timeslots */}
+      {slots.length>1&&<div style={{padding:'14px 22px',borderBottom:`1px solid ${t.border}`}}>
+        <div style={{...mono,fontSize:9,fontWeight:700,color:t.textMuted,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:6}}>All Timeslots ({slots.length})</div>
+        <div style={{maxHeight:160,overflowY:'auto'}}>
+          {slots.map((ts,i)=><div key={i} style={{display:'flex',justifyContent:'space-between',alignItems:'center',
+            padding:'4px 0',borderBottom:i<slots.length-1?`1px solid ${t.border}`:'none'}}>
+            <span style={{...mono,fontSize:11,color:t.text}}>{fmtTs(ts.start_iso)}</span>
+            {ts.rsvps>0&&<span style={{...mono,fontSize:10,fontWeight:700,color:t.textSub}}>{ts.rsvps.toLocaleString()} RSVPs</span>}
+          </div>)}
+        </div>
+      </div>}
+      {/* Tags */}
+      {tags.length>0&&<div style={{padding:'14px 22px',borderBottom:`1px solid ${t.border}`}}>
+        <div style={{...mono,fontSize:9,fontWeight:700,color:t.textMuted,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:6}}>Tags</div>
+        <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
+          {tags.map((tag,i)=><span key={i} style={{...mono,fontSize:10,padding:'3px 8px',borderRadius:2,
+            background:t.border,color:t.textSub,border:`1px solid ${t.borderStrong||t.border}`}}>{tag}</span>)}
+        </div>
+      </div>}
+      {/* Accessibility */}
+      {ev.accessibility_notes&&<div style={{padding:'14px 22px',borderBottom:`1px solid ${t.border}`}}>
+        <div style={{...mono,fontSize:9,fontWeight:700,color:t.textMuted,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:6}}>Accessibility</div>
+        <div style={{fontSize:11,color:t.textSub,lineHeight:1.5}}>{ev.accessibility_notes}</div>
+      </div>}
+      {/* Flags */}
+      {(isNewRow(ev)||(ev.is_duplicate||'').toLowerCase()==='yes'||(ev.is_recurring||'').toLowerCase()==='yes')&&
+      <div style={{padding:'14px 22px',borderBottom:`1px solid ${t.border}`,display:'flex',gap:8,flexWrap:'wrap'}}>
+        {isNewRow(ev)&&<span style={{...mono,fontSize:9,fontWeight:700,padding:'3px 8px',borderRadius:2,background:`${t.low}18`,color:t.low,border:`1px solid ${t.low}35`,textTransform:'uppercase',letterSpacing:'.06em'}}>New · 7 Days</span>}
+        {(ev.is_duplicate||'').toLowerCase()==='yes'&&<span style={{...mono,fontSize:9,fontWeight:700,padding:'3px 8px',borderRadius:2,background:`${t.high}18`,color:t.high,border:`1px solid ${t.high}35`,textTransform:'uppercase',letterSpacing:'.06em'}}>Near 2+ Properties</span>}
+        {(ev.is_recurring||'').toLowerCase()==='yes'&&<span style={{...mono,fontSize:9,fontWeight:700,padding:'3px 8px',borderRadius:2,background:`${t.accent}18`,color:t.accent,border:`1px solid ${t.accent}35`,textTransform:'uppercase',letterSpacing:'.06em'}}>Recurring</span>}
+      </div>}
+      {/* Actions */}
+      <div style={{padding:'14px 22px',display:'flex',gap:8,justifyContent:'flex-end'}}>
+        <button onClick={copyUrl} disabled={!ev.event_url} style={{
+          background:'transparent',border:`1px solid ${t.border}`,color:t.textSub,
+          padding:'7px 14px',borderRadius:4,cursor:ev.event_url?'pointer':'not-allowed',
+          fontSize:11,...mono,letterSpacing:'.06em',textTransform:'uppercase',
+          opacity:ev.event_url?1:.5}}>Copy URL</button>
+        {ev.event_url&&<a href={ev.event_url} target="_blank" rel="noopener" style={{
+          background:t.accent,border:`1px solid ${t.accent}`,color:'#fff',
+          padding:'7px 14px',borderRadius:4,textDecoration:'none',
+          fontSize:11,...mono,letterSpacing:'.06em',textTransform:'uppercase'}}>Open on Mobilize →</a>}
+      </div>
+    </div>
+  </div>;
+};
+
+/* ═══ TRACK CHECKBOX ═══════════════════════════════════════════ */
+/* Marks whether an intelligence product has been created & disseminated for
+   an event. Checked state is whole-event (keyed by event_id). */
+const TrackCheck=({t,checked,onToggle,title})=>(
+  <span onClick={e=>{e.stopPropagation();onToggle();}} title={title||(checked?'Product created — click to unmark':'Mark product created')}
+    style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:18,height:18,
+    borderRadius:4,cursor:'pointer',flexShrink:0,
+    border:`1.5px solid ${checked?t.low:t.textMuted}`,
+    background:checked?t.low:'transparent',transition:'all .12s ease'}}>
+    {checked&&<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#0a0e14"
+      strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12l5 5L20 6"/></svg>}
+  </span>
+);
+
+/* ═══ EVENTS TABLE ═════════════════════════════════════════════ */
+const EventsTable=({t,rows,type,subtitle,onOpenProperty,tracked})=>{
+  // ICE tab defaults to sorting + filtering by distance to the nearest company
+  // property (store), since store impact is what the tab is monitored for.
+  const [sortCol,setSortCol]=useState(type==='ice'?'nearest_prop_dist_mi':'distance_mi');
+  const [sortDir,setSortDir]=useState('asc');
+  const [search,setSearch]=useState('');
+  const [storeMax,setStoreMax]=useState(type==='ice'?10:0);   // miles; 0 = show all
+  const [hovered,setHovered]=useState(null);
+  const [selected,setSelected]=useState(null);
+
+  const data=useMemo(()=>{
+    // Defensive collapse: one row per (event, property), keeping the earliest
+    // timeslot. The backend collapses recurring timeslots at collection time;
+    // this mirrors it client-side so data generated before that fix (or any
+    // stream that missed it) still renders one card per event.
+    const groups=new Map();
+    for(const r of rows||[]){
+      const k=(r.event_id||r.event_title||'')+'|'+(r.property_name||'');
+      const prev=groups.get(k);
+      if(!prev){groups.set(k,r);continue;}
+      const a=Date.parse(r.event_date),b=Date.parse(prev.event_date);
+      if(!isNaN(a)&&(isNaN(b)||a<b))groups.set(k,r);
+    }
+    return [...groups.values()]
+      .filter(r=>{
+        if(type==='ice'&&storeMax>0){
+          const d=parseFloat(r.nearest_prop_dist_mi);
+          if(isNaN(d)||d>storeMax) return false;
+        }
+        if(!search) return true;
+        const s=search.toLowerCase();
+        return (r.event_title||'').toLowerCase().includes(s)||
+          (r.property_name||'').toLowerCase().includes(s)||
+          (r.event_location||'').toLowerCase().includes(s)||
+          (r.event_type||'').toLowerCase().includes(s);
+      })
+      .sort((a,b)=>{
+        let va=a[sortCol]??'',vb=b[sortCol]??'';
+        if(sortCol==='distance_mi'||sortCol==='nearest_prop_dist_mi'){va=parseFloat(va)||0;vb=parseFloat(vb)||0;}
+        else{va=String(va).toLowerCase();vb=String(vb).toLowerCase();}
+        if(va<vb) return sortDir==='asc'?-1:1;
+        if(va>vb) return sortDir==='asc'?1:-1;
+        return 0;
+      });
+  },[rows,search,sortCol,sortDir,storeMax,type]);
+
+  const sort=col=>{if(sortCol===col)setSortDir(d=>d==='asc'?'desc':'asc');else{setSortCol(col);setSortDir('asc');}};
+
+  const TH=({col,children,right})=><th onClick={()=>sort(col)} style={{
+    padding:'8px 12px',textAlign:right?'right':'left',fontSize:9,fontWeight:700,letterSpacing:'.1em',
+    textTransform:'uppercase',color:sortCol===col?t.accent:t.textMuted,
+    borderBottom:`2px solid ${sortCol===col?t.accent:t.border}`,cursor:'pointer',userSelect:'none',
+    whiteSpace:'nowrap',background:`${t.border}44`,position:'sticky',top:0,zIndex:2}}>
+    <span style={{display:'inline-flex',alignItems:'center',gap:4}}>{children}
+      {sortCol===col&&<span style={{fontSize:10}}>{sortDir==='desc'?'↓':'↑'}</span>}
+    </span>
+  </th>;
+
+  const tdBase={padding:'10px 12px',borderBottom:`1px solid ${t.border}`,verticalAlign:'top',fontSize:12,color:t.text};
+  const flagCell=(val)=>{
+    const yes=(val||'').toLowerCase()==='yes';
+    return <span style={{...mono,fontSize:9,fontWeight:700,color:yes?t.low:t.textMuted,
+      background:yes?`${t.low}15`:'transparent',padding:'2px 6px',borderRadius:2}}>{yes?'YES':'—'}</span>;
+  };
+
+  return <div style={{padding:22}}>
+    <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:14}}>
+      <div style={{display:'flex',alignItems:'center',gap:8,background:t.surface,border:`1px solid ${t.border}`,
+        borderRadius:4,padding:'6px 12px'}}>
+        <Icon id="search" size={13} color={t.textMuted}/>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search events, properties…"
+          style={{border:'none',outline:'none',fontSize:12,background:'transparent',color:t.text,width:220}}/>
+      </div>
+      {type==='ice'&&<div style={{display:'flex',alignItems:'center',gap:6,background:t.surface,
+        border:`1px solid ${t.border}`,borderRadius:4,padding:'6px 10px'}}>
+        <span style={{...mono,fontSize:9,fontWeight:700,color:t.textMuted,textTransform:'uppercase',
+          letterSpacing:'.06em'}}>Near store</span>
+        <select value={storeMax} onChange={e=>setStoreMax(parseFloat(e.target.value))}
+          style={{border:'none',outline:'none',background:'transparent',color:t.text,fontSize:12,cursor:'pointer'}}>
+          <option value={1}>≤ 1 mi</option>
+          <option value={2}>≤ 2 mi</option>
+          <option value={5}>≤ 5 mi</option>
+          <option value={10}>≤ 10 mi</option>
+          <option value={25}>≤ 25 mi</option>
+          <option value={0}>All facilities</option>
+        </select>
+      </div>}
+      {type==='ice'&&storeMax>0&&<span style={{fontSize:11,color:t.textMuted}}>
+        {data.length} event{data.length===1?'':'s'} within {storeMax} mi of a property</span>}
+    </div>
+    <div style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:4,overflow:'hidden'}}>
+      <div style={{overflowX:'auto',maxHeight:'calc(100vh - 220px)',overflowY:'auto'}}>
+        <table style={{width:'100%',borderCollapse:'collapse'}}>
+          <thead><tr>
+            <th title="Product created & disseminated" style={{padding:'8px 10px',textAlign:'center',fontSize:9,fontWeight:700,
+              letterSpacing:'.1em',textTransform:'uppercase',color:t.textMuted,borderBottom:`2px solid ${t.border}`,
+              whiteSpace:'normal',lineHeight:1.2,background:`${t.border}44`,position:'sticky',top:0,zIndex:2,width:52}}>Product Created</th>
+            <TH col="property_name">{type==='ice'?'Facility':'Property'}</TH>
+            <TH col="event_title">Event</TH>
+            <TH col="event_type">Type</TH>
+            <TH col="event_date">Date / Time</TH>
+            <TH col="event_location">Location</TH>
+            <TH col="distance_mi" right>{type==='ice'?'→ Facility':'Distance'}</TH>
+            {type==='ice'&&<TH col="nearest_prop_dist_mi" right>→ Store</TH>}
+            {type==='mall'&&<TH col="mall_terms">Matched</TH>}
+            <TH col="is_new">New</TH>
+            <TH col="is_duplicate">Dup</TH>
+            <TH col="is_recurring">Recur</TH>
+          </tr></thead>
+          <tbody>
+            {data.map((ev,i)=>{
+              const dist=parseFloat(ev.distance_mi)||99;
+              const storeDist=type==='ice'?(parseFloat(ev.nearest_prop_dist_mi)||null):null;
+              const bandBg=dist<1?`${t.critical}28`:dist<2?`${t.high}1a`:'transparent';
+              const isNew=(ev.is_new||'').toLowerCase()==='yes';
+              return <tr key={i}
+                onMouseEnter={()=>setHovered(i)} onMouseLeave={()=>setHovered(null)}
+                onClick={()=>setSelected(ev)}
+                style={{background:hovered===i?`${t.accent}0a`:bandBg,transition:'background .1s',fontWeight:isNew?600:400,cursor:'pointer'}}>
+                <td style={{...tdBase,textAlign:'center',verticalAlign:'middle'}}>
+                  {tracked&&<TrackCheck t={t} checked={tracked.has(ev)} onToggle={()=>tracked.toggle(ev,type)}/>}
+                </td>
+                <td style={{...tdBase,fontWeight:500,maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                  <span onClick={e=>{e.stopPropagation();onOpenProperty&&onOpenProperty(ev.property_name);}}
+                    style={{cursor:onOpenProperty?'pointer':'default'}}
+                    onMouseEnter={e=>{if(onOpenProperty)e.currentTarget.style.color=t.accent;}}
+                    onMouseLeave={e=>{if(onOpenProperty)e.currentTarget.style.color='';}}>{ev.property_name}</span>
+                </td>
+                <td style={{...tdBase,maxWidth:220}}>
+                  <div style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ev.event_title}</div>
+                  {ev.event_url&&<a href={ev.event_url} target="_blank" rel="noopener" style={{fontSize:10,color:t.accent}}>link</a>}
+                </td>
+                <td style={{...tdBase,fontSize:11}}>{ev.event_type}</td>
+                <td style={{...tdBase,...mono,fontSize:10}}>
+                  <div>{ev.event_date}</div>
+                  {Array.isArray(ev.all_timeslots)&&ev.all_timeslots.length>1&&
+                    <div style={{color:t.low,fontSize:9,fontWeight:700,marginTop:2}}>+{ev.all_timeslots.length-1} more dates</div>}
+                </td>
+                <td style={{...tdBase,fontSize:11,maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ev.event_location}</td>
+                <td style={{...tdBase,...mono,fontWeight:700,textAlign:'right',
+                  color:dist<1?t.critical:dist<2?t.high:t.low,fontSize:13}}>{dist.toFixed(2)}</td>
+                {type==='ice'&&<td style={{...tdBase,textAlign:'right'}}>
+                  {storeDist!=null
+                    ? <div>
+                        <div style={{...mono,fontWeight:700,fontSize:13,
+                          color:storeDist<1?t.critical:storeDist<2?t.high:t.low}}>{storeDist.toFixed(2)}</div>
+                        <div style={{fontSize:9,color:t.textMuted,maxWidth:120,overflow:'hidden',
+                          textOverflow:'ellipsis',whiteSpace:'nowrap',textAlign:'right'}}>{ev.nearest_prop_name}</div>
+                      </div>
+                    : <span style={{color:t.textMuted}}>—</span>}
+                </td>}
+                {type==='mall'&&<td style={{...tdBase,maxWidth:150}}>
+                  <div style={{display:'flex',flexWrap:'wrap',gap:3}}>
+                    {(ev.mall_terms||'').split(', ').filter(Boolean).map(term=>
+                      <span key={term} style={{...mono,fontSize:8.5,fontWeight:700,padding:'2px 6px',borderRadius:2,
+                        textTransform:'uppercase',letterSpacing:'.03em',color:'#14b8a6',
+                        background:'#14b8a618',border:'1px solid #14b8a635',whiteSpace:'nowrap'}}>{term}</span>)}
+                  </div>
+                </td>}
+                <td style={tdBase}>{flagCell(ev.is_new)}</td>
+                <td style={tdBase}>{flagCell(ev.is_duplicate)}</td>
+                <td style={tdBase}>{flagCell(ev.is_recurring)}</td>
+              </tr>;
+            })}
+            {data.length===0&&<tr><td colSpan={(type==='ice'||type==='mall')?11:10} style={{padding:40,textAlign:'center',color:t.textMuted,fontSize:13}}>
+              {search?`No events match "${search}"`:'No events in this window'}</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      <div style={{padding:'8px 14px',borderTop:`1px solid ${t.border}`,display:'flex',justifyContent:'space-between',background:`${t.border}33`}}>
+        <span style={{...mono,fontSize:10,color:t.textMuted}}>{data.length} records · sorted by {sortCol} · click any row for details</span>
+        <span style={{...mono,fontSize:10,color:t.textMuted}}>Distance bands: <span style={{color:t.critical}}>●</span> &lt;1mi <span style={{color:t.high}}>●</span> 1-2mi <span style={{color:t.low}}>●</span> &gt;2mi</span>
+      </div>
+    </div>
+    <EventModal t={t} ev={selected} onClose={()=>setSelected(null)}/>
+  </div>;
+};
+
+/* ═══ MAP VIEW ═════════════════════════════════════════════════ */
+const MapView=({t,markers})=>{
+  const mapRef=useRef(null);
+  const mapInst=useRef(null);
+  const [filter,setFilter]=useState('all');
+
+  useEffect(()=>{
+    if(mapInst.current){mapInst.current.remove();mapInst.current=null;}
+    if(!mapRef.current||!markers) return;
+    const map=L.map(mapRef.current,{zoomControl:false}).setView([38,-96],4);
+    L.control.zoom({position:'topleft'}).addTo(map);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
+      attribution:'&copy; CARTO',maxZoom:18}).addTo(map);
+    const colors={critical:'#dc2626',high:'#ea580c',medium:'#b45309',low:'#15803d'};
+    (markers||[]).forEach(m=>{
+      if(filter!=='all'&&m.threat!==filter) return;
+      const c=colors[m.threat]||'#888';
+      const isIce=m.stream==='ice';
+      const circle=L.circleMarker([m.lat,m.lon],{radius:6+m.count*2,fillColor:c,
+        color:isIce?'#0891b2':'#fff',weight:isIce?2.5:1.5,fillOpacity:.85,opacity:.95}).addTo(map);
+      const tag=isIce?`<br/><span style="font-size:9px;color:#0891b2;font-weight:700">● ICE · near detention center</span>`:'';
+      circle.bindPopup(`<div style="min-width:160px"><b>${m.name}</b><br/><span style="color:#888">${m.type||''}</span><br/><span style="font-size:10px;color:${c};font-weight:700">${m.dist.toFixed(2)} mi</span>${tag}</div>`);
+    });
+    mapInst.current=map;
+    return ()=>{if(mapInst.current){mapInst.current.remove();mapInst.current=null;}};
+  },[filter,markers]);
+
+  const colors={critical:'#dc2626',high:'#ea580c',low:'#15803d'};
+  const counts={all:(markers||[]).length};
+  ['critical','high','low'].forEach(lv=>{counts[lv]=(markers||[]).filter(m=>m.threat===lv).length;});
+
+  return <div style={{height:'100%',display:'flex',flexDirection:'column'}}>
+    <div style={{padding:'8px 16px',display:'flex',alignItems:'center',gap:8,
+      borderBottom:`1px solid ${t.border}`,background:t.surface,flexShrink:0}}>
+      <span style={{...mono,fontSize:10,color:t.textMuted,letterSpacing:'.08em',marginRight:4}}>FILTER</span>
+      {['all','critical','high','low'].map(lv=><button key={lv} onClick={()=>setFilter(lv)} style={{
+        ...mono,fontSize:9,fontWeight:600,letterSpacing:'.06em',padding:'4px 10px',borderRadius:3,cursor:'pointer',
+        textTransform:'uppercase',transition:'all .12s',
+        border:filter===lv?`1px solid ${lv==='all'?t.accent:colors[lv]}`:`1px solid ${t.border}`,
+        background:filter===lv?(lv==='all'?t.accentBg:`${colors[lv]}15`):'transparent',
+        color:filter===lv?(lv==='all'?t.accent:colors[lv]):t.textMuted}}>
+        {lv==='all'?'All':lv==='critical'?'< 1 mi':lv==='high'?'1-2 mi':'> 2 mi'} ({counts[lv]})
+      </button>)}
+      <span style={{marginLeft:'auto',...mono,fontSize:10,color:t.textMuted}}>
+        {counts[filter==='all'?'all':filter]} markers · Dark tiles
+      </span>
+    </div>
+    <div ref={mapRef} style={{flex:1,minHeight:0}}/>
+    <div style={{position:'absolute',bottom:16,right:16,zIndex:1000,
+      background:'rgba(10,22,40,.92)',borderRadius:6,padding:'10px 14px',border:'1px solid rgba(255,255,255,.1)'}}>
+      <div style={{...mono,fontSize:9,color:'#8ca3c0',letterSpacing:'.1em',marginBottom:6}}>DISTANCE</div>
+      {[{lv:'critical',label:'< 1 mile'},{lv:'high',label:'1-2 miles'},{lv:'low',label:'> 2 miles'}].map(x=>
+        <div key={x.lv} style={{display:'flex',alignItems:'center',gap:8,marginBottom:3}}>
+          <div style={{width:10,height:10,borderRadius:'50%',background:colors[x.lv],border:'1.5px solid rgba(255,255,255,.3)'}}/>
+          <span style={{...mono,fontSize:10,color:'#c8ddf5'}}>{x.label}</span>
+        </div>
+      )}
+    </div>
+  </div>;
+};
+
+/* ═══ TIMELINE ═════════════════════════════════════════════════ */
+const Timeline=({t,data})=>{
+  const [selected,setSelected]=useState(null);
+  const STREAM_COLOR={general:t.accent,'no_kings':'#7c3aed',pride:'#ec4899'};
+  const STREAM_LABEL={general:'general','no_kings':'no-kings',pride:'pride'};
+
+  const allRows=useMemo(()=>{
+    const parseDate=str=>{try{return new Date(str.replace(/\s+EST$/,'').trim());}catch{return new Date(0);}};
+    return [
+      ...(data?.general?.rows||[]).map(r=>({...r,_src:'general'})),
+      ...(data?.no_kings?.rows||[]).map(r=>({...r,_src:'no_kings'})),
+      ...(data?.pride?.rows||[]).map(r=>({...r,_src:'pride'})),
+    ].sort((a,b)=>parseDate(a.event_date)-parseDate(b.event_date));
+  },[data]);
+
+  const groups=useMemo(()=>{
+    const dayKey=str=>{try{const d=new Date(str.replace(/\s+EST$/,'').trim());return d.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});}catch{return str||'Unknown';}};
+    const out=[];let cur=null;
+    for(const row of allRows){
+      const k=dayKey(row.event_date);
+      if(!cur||cur.key!==k){cur={key:k,rows:[]};out.push(cur);}
+      cur.rows.push(row);
+    }
+    return out;
+  },[allRows]);
+
+  if(!allRows.length) return <div style={{padding:60,textAlign:'center',color:t.textMuted,fontSize:13}}>No events loaded.</div>;
+
+  return <div style={{padding:'16px 22px'}}>
+    <EventModal t={t} ev={selected} onClose={()=>setSelected(null)}/>
+    {groups.map((g,gi)=><div key={gi} style={{marginBottom:8}}>
+      {/* Date header */}
+      <div style={{display:'flex',alignItems:'center',gap:12,margin:'18px 0 10px',position:'sticky',top:0,background:t.bg,zIndex:2,padding:'4px 0'}}>
+        <span style={{...mono,fontSize:11,fontWeight:700,color:t.accent,letterSpacing:'.08em',textTransform:'uppercase',flexShrink:0}}>{g.key}</span>
+        <div style={{flex:1,height:1,background:t.border}}/>
+        <span style={{...mono,fontSize:10,color:t.textMuted,flexShrink:0}}>{g.rows.length} event{g.rows.length!==1?'s':''}</span>
+      </div>
+      {/* Event cards */}
+      <div style={{paddingLeft:20,borderLeft:`2px solid ${t.border}`,display:'flex',flexDirection:'column',gap:6}}>
+        {g.rows.map((ev,i)=>{
+          const dist=parseFloat(ev.distance_mi)||99;
+          const dc=dist<1?t.critical:dist<2?t.high:t.low;
+          const sc=STREAM_COLOR[ev._src]||t.accent;
+          const timeMatch=ev.event_date?.match(/\d{1,2}:\d{2}/);
+          return <div key={i} onClick={()=>setSelected(ev)}
+            style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:4,padding:'9px 14px',
+              cursor:'pointer',display:'flex',alignItems:'center',gap:12,position:'relative',
+              transition:'border-color .12s'}}
+            onMouseEnter={e=>e.currentTarget.style.borderColor=t.borderStrong}
+            onMouseLeave={e=>e.currentTarget.style.borderColor=t.border}>
+            {/* Dot on the left rail */}
+            <div style={{width:9,height:9,borderRadius:'50%',background:sc,flexShrink:0,
+              position:'absolute',left:-25,top:'50%',transform:'translateY(-50%)',
+              boxShadow:`0 0 0 2px ${t.bg},0 0 0 3px ${sc}55`}}/>
+            {/* Time */}
+            <span style={{...mono,fontSize:11,color:t.textMuted,flexShrink:0,width:60}}>
+              {timeMatch?`${timeMatch[0]} ET`:'—'}
+            </span>
+            {/* Stream badge */}
+            <span style={{...mono,fontSize:9,fontWeight:700,padding:'2px 6px',borderRadius:2,flexShrink:0,
+              background:`${sc}18`,color:sc,border:`1px solid ${sc}35`,textTransform:'uppercase',letterSpacing:'.06em'}}>
+              {STREAM_LABEL[ev._src]}
+            </span>
+            {/* Title + property */}
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:13,fontWeight:600,color:t.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ev.event_title}</div>
+              <div style={{fontSize:11,color:t.textSub,marginTop:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ev.property_name}</div>
+            </div>
+            {/* Distance */}
+            <span style={{...mono,fontSize:12,fontWeight:700,color:dc,flexShrink:0}}>{dist.toFixed(1)} mi</span>
+          </div>;
+        })}
+      </div>
+    </div>)}
+  </div>;
+};
+
+/* ═══ ORGANIZERS ═══════════════════════════════════════════════ */
+const OrganizerModal=({t,org,onClose})=>{
+  useEffect(()=>{
+    if(!org) return;
+    const onKey=e=>{if(e.key==='Escape') onClose();};
+    window.addEventListener('keydown',onKey);
+    const prev=document.body.style.overflow;
+    document.body.style.overflow='hidden';
+    return ()=>{window.removeEventListener('keydown',onKey);document.body.style.overflow=prev;};
+  },[org,onClose]);
+  if(!org) return null;
+  const distColor=org.minDist!=null?(org.minDist<1?t.critical:org.minDist<2?t.high:t.low):t.textMuted;
+  const websiteHost=org.website?(()=>{try{return new URL(org.website).hostname.replace(/^www\./,'');}catch{return org.website;}})():'';
+  return <div onClick={onClose} style={{
+    position:'fixed',inset:0,background:'rgba(0,0,0,.62)',backdropFilter:'blur(3px)',
+    display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000,padding:24}}>
+    <div onClick={e=>e.stopPropagation()} style={{
+      background:t.surface,border:`1px solid ${t.border}`,borderRadius:6,
+      maxWidth:720,width:'100%',maxHeight:'90vh',overflowY:'auto',
+      boxShadow:'0 20px 60px rgba(0,0,0,.5)',position:'relative'}}>
+      {/* Header */}
+      <div style={{padding:'18px 22px 14px',borderBottom:`1px solid ${t.border}`,position:'relative'}}>
+        <button onClick={onClose} title="Close (Esc)" style={{
+          position:'absolute',top:12,right:12,background:'transparent',
+          border:`1px solid ${t.border}`,color:t.textSub,width:28,height:28,
+          borderRadius:4,cursor:'pointer',fontSize:16,lineHeight:1,display:'flex',
+          alignItems:'center',justifyContent:'center'}}>×</button>
+        <div style={{display:'flex',gap:8,alignItems:'center',marginBottom:6,flexWrap:'wrap'}}>
+          <span style={{...mono,fontSize:9,fontWeight:700,padding:'3px 8px',borderRadius:2,
+            background:`${t.accent}18`,color:t.accent,border:`1px solid ${t.accent}35`,textTransform:'uppercase',letterSpacing:'.06em'}}>Organizer</span>
+          <span style={{...mono,fontSize:10,fontWeight:700,padding:'3px 8px',borderRadius:2,
+            background:`${t.accent}18`,color:t.accent,border:`1px solid ${t.accent}35`}}>{org.count} event{org.count===1?'':'s'}</span>
+          {org.minDist!=null&&<span style={{...mono,fontSize:10,fontWeight:700,padding:'3px 8px',borderRadius:2,
+            background:`${distColor}18`,color:distColor,border:`1px solid ${distColor}35`}}>nearest {org.minDist.toFixed(2)} mi</span>}
+        </div>
+        <h2 style={{fontSize:18,fontWeight:700,color:t.text,marginRight:32,lineHeight:1.3}}>{org.name}</h2>
+        {org.typesStr&&<p style={{fontSize:11,color:t.textMuted,marginTop:4}}>{org.typesStr}</p>}
+      </div>
+      {/* Stats grid */}
+      <div style={{padding:'14px 22px',borderBottom:`1px solid ${t.border}`,display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12}}>
+        {[
+          {label:'Total',v:org.count,c:t.accent},
+          {label:'General',v:org.streams.general,c:t.accent},
+          {label:'No Kings',v:org.streams.no_kings,c:'#7c3aed'},
+        ].map(s=><div key={s.label}>
+          <div style={{...mono,fontSize:9,fontWeight:700,color:t.textMuted,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:3}}>{s.label}</div>
+          <div style={{...mono,fontSize:22,fontWeight:700,color:s.v?s.c:t.textMuted}}>{s.v}</div>
+        </div>)}
+      </div>
+      {/* Contact */}
+      {(org.website||org.email||org.phone)&&<div style={{padding:'14px 22px',borderBottom:`1px solid ${t.border}`}}>
+        <div style={{...mono,fontSize:9,fontWeight:700,color:t.textMuted,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:6}}>Contact</div>
+        <div style={{display:'flex',flexWrap:'wrap',gap:14,fontSize:12}}>
+          {org.website&&<a href={org.website} target="_blank" rel="noopener" style={{color:t.accent,textDecoration:'none'}}>🔗 {websiteHost}</a>}
+          {org.email&&<a href={`mailto:${org.email}`} style={{color:t.accent,textDecoration:'none'}}>✉ {org.email}</a>}
+          {org.phone&&<a href={`tel:${org.phone}`} style={{color:t.accent,textDecoration:'none'}}>☎ {org.phone}</a>}
+        </div>
+      </div>}
+      {/* Events list */}
+      <div style={{padding:'14px 22px'}}>
+        <div style={{...mono,fontSize:9,fontWeight:700,color:t.textMuted,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:8}}>Events ({org.events.length})</div>
+        <div style={{display:'flex',flexDirection:'column',gap:6,maxHeight:340,overflowY:'auto'}}>
+          {org.events.slice(0,40).map((e,i)=>{
+            const d=parseFloat(e.distance_mi)||99;
+            const dc=d<1?t.critical:d<2?t.high:t.low;
+            return <div key={i} style={{display:'flex',alignItems:'center',gap:10,padding:'7px 9px',
+              border:`1px solid ${t.border}`,borderRadius:4,background:t.bg}}>
+              <span style={{...mono,fontSize:10,fontWeight:700,color:dc,width:48,flexShrink:0}}>{d.toFixed(2)} mi</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:12,fontWeight:500,color:t.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{e.event_title||'Untitled'}</div>
+                <div style={{fontSize:10,color:t.textMuted,marginTop:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{e.property_name} · {e.event_date||''}</div>
+              </div>
+            </div>;
+          })}
+        </div>
+      </div>
+    </div>
+  </div>;
+};
+
+const OrgRow=({t,org,rank,maxCount,onOpen})=>{
+  const distColor=org.minDist!=null?(org.minDist<1?t.critical:org.minDist<2?t.high:t.low):t.textMuted;
+  const pct=Math.max(3,Math.round(org.count/maxCount*100));
+  return <div onClick={()=>onOpen(org)} style={{
+    display:'flex',alignItems:'center',gap:14,padding:'10px 16px',cursor:'pointer',
+    borderTop:`1px solid ${t.border}`,transition:'background .1s ease'}}
+    onMouseEnter={e=>e.currentTarget.style.background=t.bg}
+    onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+    <div style={{...mono,fontSize:11,fontWeight:700,color:t.textMuted,width:30,flexShrink:0,textAlign:'right'}}>{rank}</div>
+    <div style={{flex:1,minWidth:0}}>
+      <div style={{fontSize:13,fontWeight:600,color:t.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{org.name}</div>
+      {org.typesStr&&<div style={{fontSize:10,color:t.textMuted,marginTop:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{org.typesStr}</div>}
+    </div>
+    <div style={{width:140,flexShrink:0,display:'flex',alignItems:'center',gap:10}}>
+      <div style={{flex:1,height:6,borderRadius:3,background:t.border,overflow:'hidden'}}>
+        <div style={{width:`${pct}%`,height:'100%',background:t.accent,borderRadius:3}}/>
+      </div>
+      <div style={{...mono,fontSize:15,fontWeight:700,color:t.accent,width:22,textAlign:'right'}}>{org.count}</div>
+    </div>
+    <div style={{...mono,fontSize:10,display:'flex',gap:9,width:130,flexShrink:0,justifyContent:'flex-end'}}>
+      {org.streams.general>0&&<span style={{color:t.accent,fontWeight:700}}>GEN {org.streams.general}</span>}
+      {org.streams.no_kings>0&&<span style={{color:'#7c3aed',fontWeight:700}}>NK {org.streams.no_kings}</span>}
+      {org.streams.pride>0&&<span style={{color:'#ec4899',fontWeight:700}}>PD {org.streams.pride}</span>}
+    </div>
+    <div style={{...mono,fontSize:11,fontWeight:700,color:distColor,width:62,flexShrink:0,textAlign:'right'}}>
+      {org.minDist!=null?`${org.minDist.toFixed(2)} mi`:'—'}</div>
+  </div>;
+};
+
+const Organizers=({t,orgs})=>{
+  const [search,setSearch]=useState('');
+  const [selected,setSelected]=useState(null);
+  const [sort,setSort]=useState('count');
+  if(!orgs||!orgs.length) return <div style={{padding:40,textAlign:'center',color:t.textMuted}}>No organizer data available</div>;
+  const s=search.trim().toLowerCase();
+  const maxCount=Math.max(...orgs.map(o=>o.count),1);
+  const filtered=(s?orgs.filter(o=>o.name.toLowerCase().includes(s)||o.typesStr.toLowerCase().includes(s)):orgs)
+    .slice().sort((a,b)=>{
+      if(sort==='name')return a.name.localeCompare(b.name);
+      if(sort==='dist')return (a.minDist??99)-(b.minDist??99);
+      return b.count-a.count;
+    });
+  const sortBtn=(id,label)=><button onClick={()=>setSort(id)} style={{...mono,fontSize:10,fontWeight:700,
+    padding:'6px 12px',borderRadius:5,cursor:'pointer',textTransform:'uppercase',letterSpacing:'.05em',
+    border:`1px solid ${sort===id?t.accent:t.border}`,
+    background:sort===id?`${t.accent}1a`:'transparent',color:sort===id?t.accent:t.textMuted}}>{label}</button>;
+  return <div style={{padding:22}}>
+    <div style={{display:'flex',alignItems:'flex-end',justifyContent:'space-between',gap:16,marginBottom:14,flexWrap:'wrap'}}>
+      <div>
+        <h2 style={{fontSize:17,fontWeight:700,color:t.text,marginBottom:4}}>Event Organizers</h2>
+        <p style={{fontSize:11,color:t.textMuted}}>Click any row for contact info, stats, and event list · {orgs.length} tracked</p>
+      </div>
+      <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+        <span style={{...mono,fontSize:9,fontWeight:700,color:t.textMuted,textTransform:'uppercase',letterSpacing:'.06em'}}>Sort</span>
+        {sortBtn('count','Events')}{sortBtn('name','Name')}{sortBtn('dist','Nearest')}
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search organizers…"
+          style={{...mono,fontSize:11,padding:'7px 12px',border:`1px solid ${t.border}`,borderRadius:6,
+          background:t.surface,color:t.text,width:200,outline:'none'}}/>
+      </div>
+    </div>
+    {filtered.length>0&&<div style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,overflow:'hidden'}}>
+      <div style={{display:'flex',alignItems:'center',gap:14,padding:'8px 16px',
+        ...mono,fontSize:9,fontWeight:700,color:t.textMuted,textTransform:'uppercase',letterSpacing:'.06em'}}>
+        <div style={{width:30,flexShrink:0,textAlign:'right'}}>#</div>
+        <div style={{flex:1,minWidth:0}}>Organizer</div>
+        <div style={{width:140,flexShrink:0}}>Events</div>
+        <div style={{width:130,flexShrink:0,textAlign:'right'}}>Streams</div>
+        <div style={{width:62,flexShrink:0,textAlign:'right'}}>Nearest</div>
+      </div>
+      {filtered.map((o,i)=><OrgRow key={o.name} t={t} org={o} rank={i+1} maxCount={maxCount} onOpen={setSelected}/>)}
+    </div>}
+    {!filtered.length&&<div style={{padding:40,textAlign:'center',color:t.textMuted,fontSize:12}}>No organizers match "{search}"</div>}
+    <OrganizerModal t={t} org={selected} onClose={()=>setSelected(null)}/>
+  </div>;
+};
+
+/* ═══ TRACKED PRODUCTS ═════════════════════════════════════════ */
+const STREAM_COLOR={General:null,'No Kings':'#7c3aed',Pride:'#ec4899',ICE:'#0891b2'};
+const Tracked=({t,tracked})=>{
+  const accent=t.accent;
+  const list=useMemo(()=>Object.values(tracked.items)
+    .sort((a,b)=>(b.checked_at||'').localeCompare(a.checked_at||'')),[tracked.items]);
+
+  const exportCsv=()=>{
+    const esc=v=>`"${String(v??'').replace(/"/g,'""')}"`;
+    const head=['event_id','title','type','date','property','location','distance_mi','streams','marked_at','note','url'];
+    const lines=[head.join(',')];
+    list.forEach(it=>{const s=it.snapshot||{};lines.push([it.event_id,s.event_title,s.event_type,s.event_date,
+      s.property_name,s.event_location,s.distance_mi,(it.streams||[]).join('|'),it.checked_at,it.note,s.event_url].map(esc).join(','));});
+    const url=URL.createObjectURL(new Blob([lines.join('\n')],{type:'text/csv'}));
+    const a=document.createElement('a');a.href=url;a.download=`tracked_products_${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(url);
+  };
+
+  return <div style={{padding:22}}>
+    <div style={{display:'flex',alignItems:'flex-end',justifyContent:'space-between',gap:16,marginBottom:14,flexWrap:'wrap'}}>
+      <div>
+        <h2 style={{fontSize:17,fontWeight:700,color:t.text,marginBottom:4}}>Tracked Products</h2>
+        <p style={{fontSize:11,color:t.textMuted}}>Events you've marked as having a disseminated product · {list.length} tracked · persists until you uncheck</p>
+      </div>
+      {list.length>0&&<button onClick={exportCsv} style={{...mono,fontSize:10,fontWeight:700,padding:'8px 14px',borderRadius:6,
+        cursor:'pointer',textTransform:'uppercase',letterSpacing:'.05em',border:`1px solid ${t.border}`,
+        background:'transparent',color:t.textSub}}>Export CSV</button>}
+    </div>
+    {!list.length&&<div style={{padding:'48px 40px',textAlign:'center',color:t.textMuted,fontSize:13}}>
+      Nothing tracked yet. Tick the ✓ box next to any event to mark that a product has been created and disseminated for it.</div>}
+    <div style={{display:'flex',flexDirection:'column',gap:10}}>
+      {list.map(it=>{
+        const s=it.snapshot||{};
+        const dist=parseFloat(s.distance_mi);
+        const dc=isNaN(dist)?t.textMuted:(dist<1?t.critical:dist<2?t.high:t.low);
+        const marked=it.checked_at?new Date(it.checked_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'';
+        return <div key={it.event_id} style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,padding:14,
+          display:'flex',gap:14,alignItems:'flex-start'}}>
+          <div style={{paddingTop:2}}><TrackCheck t={t} checked={true} onToggle={()=>tracked.toggle(s)} title="Remove from tracked"/></div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{display:'flex',alignItems:'baseline',gap:8,flexWrap:'wrap'}}>
+              <span style={{fontSize:14,fontWeight:600,color:t.text}}>{s.event_title||'Untitled event'}</span>
+              {s.event_url&&<a href={s.event_url} target="_blank" rel="noopener" style={{fontSize:12,fontWeight:700,color:accent,textDecoration:'none',
+                padding:'2px 9px',borderRadius:5,border:`1px solid ${accent}66`,background:`${accent}1a`,whiteSpace:'nowrap'}}>Open ↗</a>}
+            </div>
+            {s.event_date&&<div style={{...mono,fontSize:12,fontWeight:600,color:t.text,marginTop:4}}>{s.event_date}</div>}
+            <div style={{fontSize:11,color:t.textMuted,marginTop:3,display:'flex',gap:10,flexWrap:'wrap',alignItems:'center'}}>
+              {s.event_type&&<span>{s.event_type}</span>}
+              {s.property_name&&<span>· {s.property_name}</span>}
+              {!isNaN(dist)&&<span style={{...mono,color:dc,fontWeight:700}}>{dist.toFixed(2)} mi</span>}
+              {(it.streams||[]).map(st=><span key={st} style={{...mono,fontSize:9,fontWeight:700,padding:'2px 6px',borderRadius:2,
+                textTransform:'uppercase',letterSpacing:'.04em',color:STREAM_COLOR[st]||accent,
+                background:`${STREAM_COLOR[st]||accent}18`,border:`1px solid ${STREAM_COLOR[st]||accent}35`}}>{st}</span>)}
+              {marked&&<span style={{...mono,fontSize:9,fontWeight:600,padding:'2px 7px',borderRadius:10,
+                color:t.textMuted,background:`${t.border}`,border:`1px solid ${t.border}`,whiteSpace:'nowrap'}}>
+                Saved {marked}</span>}
+            </div>
+            {s.event_location&&<div style={{fontSize:10,color:t.textMuted,marginTop:3,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{s.event_location}</div>}
+            <textarea value={it.note||''} onChange={e=>tracked.setNote(it.event_id,e.target.value)}
+              placeholder="Product notes — link, distro list, status…"
+              style={{marginTop:8,width:'100%',minHeight:38,resize:'vertical',fontFamily:'inherit',fontSize:11.5,
+              padding:'7px 9px',borderRadius:5,border:`1px solid ${t.border}`,background:t.bg,color:t.text,outline:'none'}}/>
+          </div>
+        </div>;
+      })}
+    </div>
+  </div>;
+};
+
+/* ═══ TRENDS ═══════════════════════════════════════════════════ */
+const Trends=({t,data,stats})=>{
+  const chartRef=useRef(null);
+  const runs=data?.trend_data?.runs||[];
+
+  // ── Stream snapshot data ─────────────────────────────────────
+  const streams=[
+    {id:'general', label:'General Events',  color:t.accent,    total:stats?.general||0,  bands:stats?.bands||{red:0,amber:0,green:0},  new:(runs[runs.length-1]?.gen_new??null)},
+    {id:'no_kings',label:'No Kings',        color:'#7c3aed',   total:stats?.noKings||0,  bands:stats?.bandsNK||{red:0,amber:0,green:0}, new:(runs[runs.length-1]?.nk_new??null)},
+    {id:'ice',     label:'ICE Detention',   color:'#0891b2',   total:stats?.ice||0,      bands:stats?.bandsICE||{red:0,amber:0,green:0},new:(runs[runs.length-1]?.ice_new??null)},
+  ];
+
+  // ── Event type distribution ──────────────────────────────────
+  const types=stats?.types||[];
+  const maxType=Math.max(...types.map(x=>x.count),1);
+
+  // ── Historical chart ─────────────────────────────────────────
+  const isDarkBg=(()=>{const b=t.bg||'#fff';const m=b.match(/[0-9a-f]{2}/gi);if(!m)return false;const [r,g,bl]=m.map(x=>parseInt(x,16));return (r+g+bl)/3<128;})();
+  const gridColor=isDarkBg?'rgba(255,255,255,.07)':'rgba(0,0,0,.07)';
+  const showChart=runs.length>=1;
+  const useBar=runs.length<2;
+
+  useEffect(()=>{
+    if(!chartRef.current||!showChart) return;
+    const labels=runs.map(r=>r.label||(r.ts?new Date(r.ts).toLocaleDateString('en-US',{month:'short',day:'numeric'}):'')||'');
+    const baseDataset=(label,data,color)=>useBar
+      ? {label,data,backgroundColor:`${color}cc`,borderColor:color,borderWidth:1,borderRadius:4}
+      : {label,data,borderColor:color,backgroundColor:`${color}18`,tension:.35,fill:true,pointRadius:3,pointHoverRadius:5,borderWidth:2};
+    const chart=new Chart(chartRef.current,{
+      type:useBar?'bar':'line',
+      data:{labels,datasets:[
+        baseDataset('General',  runs.map(r=>r.gen_total??0),t.accent),
+        baseDataset('No Kings', runs.map(r=>r.nk_total??0),'#7c3aed'),
+        baseDataset('ICE',      runs.map(r=>r.ice_total??0),'#0891b2'),
+      ]},
+      options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+        plugins:{
+          legend:{labels:{color:t.text,font:{family:"'Inter'",size:11},boxWidth:12,padding:16}},
+          tooltip:{backgroundColor:t.surface,borderColor:t.border,borderWidth:1,titleColor:t.text,bodyColor:t.textSub,padding:10,
+            callbacks:{title:items=>items[0]?.label||''}},
+        },
+        scales:{
+          x:{ticks:{color:t.textMuted,font:{size:10},maxTicksLimit:14},grid:{color:gridColor},border:{color:t.border}},
+          y:{beginAtZero:true,ticks:{color:t.textMuted,font:{size:10}},grid:{color:gridColor},border:{color:t.border}},
+        },
+      },
+    });
+    return ()=>chart.destroy();
+  },[runs,t,showChart,useBar]);
+
+  const sectionHead=(label,sub)=><div style={{marginBottom:14}}>
+    <div style={{...mono,fontSize:10,fontWeight:700,letterSpacing:'.14em',textTransform:'uppercase',color:t.textMuted}}>{label}</div>
+    {sub&&<div style={{fontSize:11,color:t.textMuted,marginTop:2}}>{sub}</div>}
+  </div>;
+
+  const ProxBar=({bands,color})=>{
+    const tot=(bands.red||0)+(bands.amber||0)+(bands.green||0)||1;
+    return <div style={{display:'flex',flexDirection:'column',gap:4,marginTop:8}}>
+      {[{k:'red',c:t.critical,label:'< 1 mi'},{k:'amber',c:t.high,label:'1–2 mi'},{k:'green',c:t.low,label:'> 2 mi'}].map(({k,c,label})=>{
+        const v=bands[k]||0;
+        const pct=Math.round(v/tot*100);
+        return <div key={k} style={{display:'flex',alignItems:'center',gap:8}}>
+          <div style={{...mono,fontSize:9,color:c,width:36,flexShrink:0,fontWeight:700}}>{label}</div>
+          <div style={{flex:1,height:6,borderRadius:3,background:t.border,overflow:'hidden'}}>
+            <div style={{width:`${pct}%`,height:'100%',borderRadius:3,background:c,transition:'width .4s ease'}}/>
+          </div>
+          <div style={{...mono,fontSize:10,color:t.textSub,width:28,textAlign:'right'}}>{v}</div>
+        </div>;
+      })}
+    </div>;
+  };
+
+  return <div style={{padding:24,display:'flex',flexDirection:'column',gap:24}}>
+
+    {/* ── Section 1: Stream snapshot ─────────────────────────── */}
+    <div>
+      {sectionHead('Current Snapshot','Live totals and proximity breakdown per stream')}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:14}}>
+        {streams.map(s=>{
+          const tot=(s.bands.red||0)+(s.bands.amber||0)+(s.bands.green||0)||1;
+          return <div key={s.id} style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,padding:18}}>
+            <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:8,marginBottom:4}}>
+              <div>
+                <div style={{...mono,fontSize:9,fontWeight:700,letterSpacing:'.1em',textTransform:'uppercase',color:t.textMuted,marginBottom:4}}>{s.label}</div>
+                <div style={{...mono,fontSize:36,fontWeight:700,color:s.color,lineHeight:1}}>{s.total}</div>
+                <div style={{fontSize:11,color:t.textMuted,marginTop:4}}>events</div>
+              </div>
+              <div style={{textAlign:'right'}}>
+                {s.new!=null&&<div style={{...mono,fontSize:11,color:t.low,fontWeight:700,marginBottom:2}}>+{s.new} new</div>}
+                <div style={{...mono,fontSize:10,color:t.critical,fontWeight:700}}>{s.bands.red||0} within 1 mi</div>
+              </div>
+            </div>
+            <div style={{borderTop:`1px solid ${t.border}`,paddingTop:10,marginTop:10}}>
+              <div style={{...mono,fontSize:9,color:t.textMuted,letterSpacing:'.08em',marginBottom:6}}>PROXIMITY BREAKDOWN</div>
+              <ProxBar bands={s.bands} color={s.color}/>
+            </div>
+          </div>;
+        })}
+      </div>
+    </div>
+
+    {/* ── Section 2: Event type distribution ────────────────── */}
+    {types.length>0&&<div>
+      {sectionHead('Event Type Distribution','All streams combined · sorted by volume')}
+      <div style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,padding:18,display:'grid',gridTemplateColumns:'1fr 1fr',gap:'6px 32px'}}>
+        {types.slice(0,20).map((tp,i)=><div key={tp.name} style={{display:'flex',alignItems:'center',gap:10,padding:'5px 0',
+          borderBottom:i<Math.min(types.length,20)-2?`1px solid ${t.border}`:'none'}}>
+          <div style={{...mono,fontSize:9,color:t.textMuted,width:16,textAlign:'right',flexShrink:0}}>{i+1}</div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:11,fontWeight:500,color:t.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginBottom:3}}>{tp.name}</div>
+            <div style={{height:5,borderRadius:3,background:t.border,overflow:'hidden'}}>
+              <div style={{width:`${(tp.count/maxType)*100}%`,height:'100%',borderRadius:3,
+                background:i===0?t.accent:i===1?'#7c3aed':i===2?'#ec4899':t.borderStrong,transition:'width .4s ease'}}/>
+            </div>
+          </div>
+          <div style={{...mono,fontSize:11,fontWeight:700,color:t.textSub,width:28,textAlign:'right',flexShrink:0}}>{tp.count}</div>
+        </div>)}
+      </div>
+    </div>}
+
+    {/* ── Section 3: Historical trend chart ─────────────────── */}
+    <div>
+      {sectionHead('Historical Volume',runs.length<2?'First run captured — line chart unlocks after the next scheduled run':'Event counts per scheduled run over time')}
+      {showChart
+        ? <div style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,padding:20,height:340,position:'relative'}}>
+            <canvas ref={chartRef}/>
+            {runs.length<2&&<div style={{position:'absolute',top:12,right:14,...mono,fontSize:9,color:t.textMuted,letterSpacing:'.08em',textTransform:'uppercase'}}>Building history… {runs.length}/5 runs</div>}
+          </div>
+        : <div style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,padding:32,textAlign:'center'}}>
+            <div style={{fontSize:13,color:t.textMuted}}>No run data yet — check back after the workflow executes.</div>
+          </div>
+      }
+    </div>
+
+  </div>;
+};
+
+/* ═══ THREAT WATCH ═════════════════════════════════════════════ */
+const ThreatWatch=({t,stats,onOpenProperty})=>{
+  const [selected,setSelected]=useState(null);
+  const events=useMemo(()=>{
+    const all=(stats?.halfMile||[]).slice();
+    const parseDt=str=>{try{return new Date((str||'').replace(/\s+EST$/,'').trim()).getTime()||0;}catch{return 0;}};
+    return all.sort((a,b)=>{
+      const da=parseFloat(a.distance_mi)||99, db=parseFloat(b.distance_mi)||99;
+      if(Math.abs(da-db)>0.05) return da-db;
+      return parseDt(a.event_date)-parseDt(b.event_date);
+    });
+  },[stats]);
+  // Group by property
+  const grouped=useMemo(()=>{
+    const map={};
+    events.forEach(e=>{const k=e.property_name||'Unknown';if(!map[k])map[k]=[];map[k].push(e);});
+    return Object.entries(map).map(([name,evs])=>({
+      name, events:evs,
+      minDist:Math.min(...evs.map(x=>parseFloat(x.distance_mi)||99)),
+    })).sort((a,b)=>a.minDist-b.minDist);
+  },[events]);
+
+  if(!events.length) return <div style={{padding:40,textAlign:'center',color:t.textMuted}}>
+    <div style={{...mono,fontSize:11,letterSpacing:'.1em',color:t.low,marginBottom:8}}>● ALL CLEAR</div>
+    <div style={{fontSize:13,color:t.text,marginBottom:4}}>No events within ½ mile of any tracked property</div>
+    <div style={{fontSize:11,color:t.textMuted}}>Threat Watch surfaces events when they fall inside the half-mile danger zone.</div>
+  </div>;
+
+  return <div style={{padding:24}}>
+    <div style={{display:'flex',alignItems:'flex-end',justifyContent:'space-between',gap:16,marginBottom:14,flexWrap:'wrap',
+      paddingBottom:14,borderBottom:`1px solid ${t.border}`}}>
+      <div>
+        <div style={{...mono,fontSize:10,fontWeight:700,letterSpacing:'.18em',color:t.critical,marginBottom:6}}>● ACTIVE THREAT WATCH</div>
+        <h1 style={{fontSize:30,fontWeight:700,color:t.text,letterSpacing:'-.02em',lineHeight:1.05}}>
+          <span style={{color:t.critical}}>{events.length}</span> event{events.length===1?'':'s'} within ½ mile
+        </h1>
+        <div style={{fontSize:12,color:t.textMuted,marginTop:6}}>across {grouped.length} {grouped.length===1?'property':'properties'} · sorted by proximity</div>
+      </div>
+    </div>
+
+    <div style={{display:'flex',flexDirection:'column',gap:16}}>
+      {grouped.map(g=>{
+        const tot=g.events.length;
+        const dc=g.minDist<0.25?t.critical:t.high;
+        return <div key={g.name} style={{background:t.surface,border:`1px solid ${t.border}`,borderLeft:`3px solid ${dc}`,borderRadius:6}}>
+          <div style={{padding:'12px 16px',borderBottom:`1px solid ${t.border}`,display:'flex',alignItems:'center',justifyContent:'space-between',gap:12}}>
+            <div style={{minWidth:0,flex:1}}>
+              <div onClick={()=>onOpenProperty&&onOpenProperty(g.name)}
+                style={{fontSize:14,fontWeight:600,color:t.text,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:6}}
+                onMouseEnter={e=>e.currentTarget.style.color=t.accent}
+                onMouseLeave={e=>e.currentTarget.style.color=t.text}>
+                {g.name}
+                <span style={{fontSize:10,opacity:.7}}>↗</span>
+              </div>
+              <div style={{...mono,fontSize:10,color:t.textMuted,marginTop:2}}>
+                {tot} event{tot===1?'':'s'} · nearest {g.minDist.toFixed(2)} mi
+              </div>
+            </div>
+            <span style={{...mono,fontSize:10,fontWeight:700,padding:'4px 10px',borderRadius:3,
+              background:`${dc}18`,color:dc,border:`1px solid ${dc}35`,textTransform:'uppercase',letterSpacing:'.06em'}}>
+              {g.minDist<0.25?'critical':'high'}
+            </span>
+          </div>
+          <div>{g.events.map((ev,i)=>{
+            const d=parseFloat(ev.distance_mi)||99;
+            const evDc=d<0.25?t.critical:t.high;
+            return <div key={i} onClick={()=>setSelected(ev)} style={{display:'flex',alignItems:'center',gap:12,
+              padding:'10px 16px',cursor:'pointer',transition:'background .1s',
+              borderBottom:i<g.events.length-1?`1px solid ${t.border}`:'none'}}
+              onMouseEnter={e=>e.currentTarget.style.background=`${t.accent}09`}
+              onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+              <span style={{...mono,fontSize:12,fontWeight:700,color:evDc,width:54,flexShrink:0}}>{d.toFixed(2)}mi</span>
+              <span style={{...mono,fontSize:9,fontWeight:600,padding:'2px 7px',borderRadius:2,flexShrink:0,
+                background:t.bg,color:t.textSub,border:`1px solid ${t.border}`,textTransform:'uppercase',letterSpacing:'.04em'}}>{ev.event_type||'EVENT'}</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:12,fontWeight:500,color:t.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ev.event_title||'Untitled'}</div>
+                <div style={{fontSize:10,color:t.textMuted,marginTop:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ev.sponsor_name||'—'}</div>
+              </div>
+              <span style={{...mono,fontSize:11,fontWeight:600,color:t.textSub,flexShrink:0,whiteSpace:'nowrap'}}>{ev.event_date}</span>
+            </div>;
+          })}</div>
+        </div>;
+      })}
+    </div>
+    <EventModal t={t} ev={selected} onClose={()=>setSelected(null)}/>
+  </div>;
+};
+
+/* ═══ PROPERTY DETAIL ══════════════════════════════════════════ */
+const PropertyView=({t,name,stats,onBack,onOpenProperty})=>{
+  const [selected,setSelected]=useState(null);
+  const mapRef=useRef(null);
+  const mapInst=useRef(null);
+  const prop=useMemo(()=>(stats?.properties||[]).find(p=>p.name===name),[stats,name]);
+
+  useEffect(()=>{
+    if(mapInst.current){mapInst.current.remove();mapInst.current=null;}
+    if(!mapRef.current||!prop||!prop.lat||!prop.lon) return;
+    const map=L.map(mapRef.current,{zoomControl:true,scrollWheelZoom:false}).setView([prop.lat,prop.lon],14);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'&copy; CARTO',maxZoom:18}).addTo(map);
+    L.circleMarker([prop.lat,prop.lon],{radius:8,fillColor:'#ffffff',color:'#000',weight:2,fillOpacity:1,opacity:1})
+      .addTo(map).bindPopup(`<b>${prop.name}</b>`);
+    L.circle([prop.lat,prop.lon],{radius:805,color:t.critical,fillColor:t.critical,fillOpacity:.04,weight:1,dashArray:'4,4'}).addTo(map);
+    L.circle([prop.lat,prop.lon],{radius:1609,color:t.high,fillColor:t.high,fillOpacity:.03,weight:1,dashArray:'4,4'}).addTo(map);
+    L.circle([prop.lat,prop.lon],{radius:3219,color:t.low,fillColor:t.low,fillOpacity:.02,weight:1,dashArray:'4,4'}).addTo(map);
+    prop.events.forEach(ev=>{
+      const lat=parseFloat(ev.event_lat),lon=parseFloat(ev.event_lon);
+      if(!lat||!lon) return;
+      const d=parseFloat(ev.distance_mi)||99;
+      const c=d<1?t.critical:d<2?t.high:t.low;
+      L.circleMarker([lat,lon],{radius:5,fillColor:c,color:'#fff',weight:1,fillOpacity:.85})
+        .addTo(map).bindPopup(`<div style="min-width:140px"><b>${ev.event_title}</b><br/><span style="color:#888">${ev.event_type||''}</span><br/><span style="font-size:10px;color:${c};font-weight:700">${d.toFixed(2)} mi</span></div>`);
+    });
+    mapInst.current=map;
+    return ()=>{if(mapInst.current){mapInst.current.remove();mapInst.current=null;}};
+  },[prop,t]);
+
+  if(!prop) return <div style={{padding:40,textAlign:'center',color:t.textMuted}}>
+    <div style={{fontSize:14,color:t.text,marginBottom:8}}>Property "{name}" not found</div>
+    <button onClick={onBack} style={{...mono,fontSize:11,padding:'6px 14px',borderRadius:4,background:'transparent',
+      border:`1px solid ${t.border}`,color:t.accent,cursor:'pointer'}}>← Back</button>
+  </div>;
+
+  const threatColors={critical:t.critical,high:t.high,medium:t.high,low:t.low};
+  const threatColor=threatColors[prop.threat]||t.textMuted;
+  // Top organizers active near this property
+  const orgCounts={};
+  prop.events.forEach(e=>{if(e.sponsor_name)orgCounts[e.sponsor_name]=(orgCounts[e.sponsor_name]||0)+1;});
+  const topOrgs=Object.entries(orgCounts).map(([n,c])=>({name:n,count:c})).sort((a,b)=>b.count-a.count).slice(0,8);
+
+  return <div style={{padding:24,display:'flex',flexDirection:'column',gap:16}}>
+    {/* Back link */}
+    <div>
+      <button onClick={onBack} style={{...mono,fontSize:10,padding:'4px 10px',borderRadius:4,background:'transparent',
+        border:`1px solid ${t.border}`,color:t.textSub,cursor:'pointer',letterSpacing:'.06em'}}>← Back</button>
+    </div>
+
+    {/* Header */}
+    <div style={{paddingBottom:14,borderBottom:`1px solid ${t.border}`,display:'flex',alignItems:'flex-end',justifyContent:'space-between',gap:16,flexWrap:'wrap'}}>
+      <div style={{minWidth:0}}>
+        <div style={{...mono,fontSize:10,fontWeight:700,letterSpacing:'.18em',color:t.textMuted,marginBottom:6}}>PROPERTY PROFILE</div>
+        <h1 style={{fontSize:28,fontWeight:700,color:t.text,letterSpacing:'-.02em',lineHeight:1.1}}>{prop.name}</h1>
+        {prop.lat&&prop.lon&&<div style={{...mono,fontSize:11,color:t.textMuted,marginTop:6}}>{prop.lat.toFixed(4)}, {prop.lon.toFixed(4)}</div>}
+      </div>
+      <div style={{display:'flex',gap:8,alignItems:'center'}}>
+        <span style={{...mono,fontSize:10,fontWeight:700,padding:'4px 10px',borderRadius:3,
+          background:`${threatColor}18`,color:threatColor,border:`1px solid ${threatColor}35`,textTransform:'uppercase',letterSpacing:'.06em'}}>
+          {prop.threat} threat
+        </span>
+      </div>
+    </div>
+
+    {/* Stat cards */}
+    <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:12}}>
+      {[
+        {label:'Total Events',v:prop.events.length,c:t.accent},
+        {label:'Within ½ mi',v:prop.halfMileCount,c:t.critical},
+        {label:'Within 1 mi',v:prop.closeCount,c:t.high},
+        {label:'Organizers',v:prop.orgs.length,c:t.text},
+        {label:'Recurring',v:prop.recurring,c:'#7c3aed'},
+      ].map(s=><div key={s.label} style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,padding:14}}>
+        <div style={{...mono,fontSize:9,fontWeight:700,letterSpacing:'.1em',color:t.textMuted,textTransform:'uppercase',marginBottom:6}}>{s.label}</div>
+        <div style={{...mono,fontSize:32,fontWeight:700,color:s.v?s.c:t.textMuted,lineHeight:1}}>{s.v}</div>
+      </div>)}
+    </div>
+
+    {/* Two-col: Map + Top Organizers */}
+    <div style={{display:'grid',gridTemplateColumns:'2fr 1fr',gap:14}}>
+      <div style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,overflow:'hidden'}}>
+        <div style={{padding:'10px 14px',borderBottom:`1px solid ${t.border}`,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <div style={{...mono,fontSize:10,fontWeight:700,letterSpacing:'.12em',color:t.textMuted,textTransform:'uppercase'}}>Local Map</div>
+          <div style={{...mono,fontSize:9,color:t.textMuted}}>
+            <span style={{color:t.critical}}>● ½ mi</span> · <span style={{color:t.high}}>● 1 mi</span> · <span style={{color:t.low}}>● 2 mi</span>
+          </div>
+        </div>
+        <div ref={mapRef} style={{height:340,background:t.bg}}/>
+      </div>
+      <div style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,padding:14}}>
+        <div style={{...mono,fontSize:10,fontWeight:700,letterSpacing:'.12em',color:t.textMuted,textTransform:'uppercase',marginBottom:10}}>Top Organizers</div>
+        {topOrgs.length===0&&<div style={{fontSize:11,color:t.textMuted}}>No sponsor data</div>}
+        {topOrgs.map(o=><div key={o.name} style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,padding:'6px 0',borderBottom:`1px solid ${t.border}`}}>
+          <div style={{fontSize:11,color:t.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1,minWidth:0}}>{o.name}</div>
+          <div style={{...mono,fontSize:11,fontWeight:700,color:t.accent,flexShrink:0}}>{o.count}</div>
+        </div>)}
+      </div>
+    </div>
+
+    {/* Event list */}
+    <div style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:8,overflow:'hidden'}}>
+      <div style={{padding:'10px 14px',borderBottom:`1px solid ${t.border}`,...mono,fontSize:10,fontWeight:700,letterSpacing:'.12em',color:t.textMuted,textTransform:'uppercase',display:'flex',justifyContent:'space-between'}}>
+        <span>All Events Near {prop.name}</span>
+        <span style={{color:t.textSub}}>{prop.events.length} total · sorted by distance</span>
+      </div>
+      {prop.events.map((ev,i)=>{
+        const d=parseFloat(ev.distance_mi)||99;
+        const c=d<1?t.critical:d<2?t.high:t.low;
+        const src=ev._src||'general';
+        const srcColor=src==='general'?t.accent:src==='no_kings'?'#7c3aed':'#ec4899';
+        const srcLabel=src==='general'?'GEN':src==='no_kings'?'NK':'PD';
+        return <div key={i} onClick={()=>setSelected(ev)} style={{display:'flex',alignItems:'center',gap:12,
+          padding:'10px 14px',cursor:'pointer',transition:'background .1s',
+          borderBottom:i<prop.events.length-1?`1px solid ${t.border}`:'none'}}
+          onMouseEnter={e=>e.currentTarget.style.background=`${t.accent}09`}
+          onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+          <span style={{...mono,fontSize:11,fontWeight:700,color:c,width:50,flexShrink:0}}>{d.toFixed(2)}mi</span>
+          <span style={{...mono,fontSize:8,fontWeight:700,padding:'2px 6px',borderRadius:2,flexShrink:0,
+            background:`${srcColor}18`,color:srcColor,border:`1px solid ${srcColor}30`}}>{srcLabel}</span>
+          <span style={{...mono,fontSize:9,fontWeight:600,padding:'2px 7px',borderRadius:2,flexShrink:0,
+            background:t.bg,color:t.textSub,border:`1px solid ${t.border}`,textTransform:'uppercase',letterSpacing:'.04em'}}>{ev.event_type||'EVENT'}</span>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:12,fontWeight:500,color:t.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ev.event_title||'Untitled'}</div>
+            <div style={{fontSize:10,color:t.textMuted,marginTop:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ev.sponsor_name||'—'}</div>
+          </div>
+          <span style={{...mono,fontSize:11,fontWeight:600,color:t.textSub,flexShrink:0,whiteSpace:'nowrap'}}>{ev.event_date}</span>
+        </div>;
+      })}
+    </div>
+
+    <EventModal t={t} ev={selected} onClose={()=>setSelected(null)}/>
+  </div>;
+};
+
+/* ═══ LOGIN GATE ═══════════════════════════════════════════════ */
+const Login=({t,auth})=>{
+  const [pw,setPw]=useState('');
+  const [err,setErr]=useState('');
+  const [busy,setBusy]=useState(false);
+  const submit=async(e)=>{
+    e.preventDefault();setBusy(true);setErr('');
+    const {error}=await auth.login(pw);
+    setBusy(false);
+    if(error) setErr(error.message||'Incorrect password');
+  };
+  return <div style={{height:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:t.bg}}>
+    <form onSubmit={submit} style={{width:320,padding:28,background:t.surface,border:`1px solid ${t.border}`,borderRadius:10,
+      boxShadow:'0 20px 60px rgba(0,0,0,.4)'}}>
+      <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:18}}>
+        <div style={{width:30,height:30,borderRadius:7,background:t.accent,display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <span style={{...mono,fontSize:13,fontWeight:800,color:'#0a0e14'}}>PT</span></div>
+        <div><div style={{color:t.text,fontSize:14,fontWeight:700}}>Protest Tracker</div>
+          <div style={{...mono,color:t.accent,fontSize:9.5,letterSpacing:'.05em'}}>RESTRICTED ACCESS</div></div>
+      </div>
+      <input type="password" autoFocus value={pw} onChange={e=>{setPw(e.target.value);setErr('');}} placeholder="Password"
+        style={{width:'100%',padding:'10px 12px',borderRadius:6,border:`1px solid ${err?t.critical:t.border}`,
+        background:t.bg,color:t.text,fontSize:13,outline:'none'}}/>
+      {err&&<div style={{color:t.critical,fontSize:11,marginTop:8}}>{err}</div>}
+      <button type="submit" disabled={busy||!pw} style={{marginTop:14,width:'100%',padding:'10px',borderRadius:6,border:'none',
+        cursor:busy||!pw?'not-allowed':'pointer',background:t.accent,color:'#0a0e14',fontWeight:700,fontSize:13,opacity:busy||!pw?.6:1}}>
+        {busy?'Signing in…':'Enter'}</button>
+    </form>
+  </div>;
+};
+
+/* ═══ APP ══════════════════════════════════════════════════════ */
+const App=()=>{
+  const saved=(()=>{try{return JSON.parse(localStorage.getItem('pt2_state')||'{}')}catch{return{}}})();
+  // Guard against a saved view whose tab no longer exists (e.g. retired fifa/pride)
+  const [view,setView]=useState(NAV.some(n=>n.id===saved.view)?saved.view:'dashboard');
+  const [prevView,setPrevView]=useState('dashboard');
+  const [selectedProperty,setSelectedProperty]=useState(null);
+  const [darkMode,setDarkMode]=useState(saved.dark!=='0');
+  const [query,setQuery]=useState('');
+  const variant=darkMode?'midnight':'daylight';
+  const t=THEMES[variant];
+
+  const auth=useAuth();
+  const {data,err}=useData(auth.authed);
+  const tracked=useTracked(auth.authed);
+  const stats=useMemo(()=>deriveStats(data),[data]);
+
+  const persist=(k,v)=>{const s=JSON.parse(localStorage.getItem('pt2_state')||'{}');s[k]=v;localStorage.setItem('pt2_state',JSON.stringify(s));};
+  const handleView=v=>{setView(v);persist('view',v);};
+  const handleDark=()=>{const nv=!darkMode;setDarkMode(nv);persist('dark',nv?'1':'0');};
+  const openProperty=name=>{setPrevView(view);setSelectedProperty(name);setView('property');};
+  const closeProperty=()=>{setView(prevView||'dashboard');setSelectedProperty(null);};
+
+  // Auth gate — nothing renders (and no data is fetched) until logged in.
+  if(auth.loading) return <div style={{height:'100vh',display:'flex',alignItems:'center',justifyContent:'center',
+    background:t.bg,color:t.textMuted,fontFamily:'Inter,sans-serif',fontSize:13}}>Loading…</div>;
+  if(sb&&!auth.authed) return <Login t={t} auth={auth}/>;
+
+  if(err) return <div style={{padding:60,textAlign:'center',fontFamily:'Inter,sans-serif',color:t.textMuted,background:t.bg,height:'100vh'}}>
+    <h2 style={{marginBottom:12,color:t.text}}>Could not load dashboard data</h2>
+    <p style={{fontSize:12}}>Error: {err}</p>
+    {sb&&<button onClick={auth.logout} style={{marginTop:16,padding:'8px 16px',borderRadius:6,border:`1px solid ${t.border}`,
+      background:'transparent',color:t.accent,cursor:'pointer'}}>Log out</button>}
+  </div>;
+
+  return <div style={{display:'flex',height:'100vh',overflow:'hidden',background:t.bg}}>
+    <Sidebar t={t} view={view} setView={handleView} stats={stats} version="v2.7"
+      trackedCount={tracked.count} onLogout={sb?auth.logout:undefined}/>
+    <div style={{flex:1,display:'flex',flexDirection:'column',minWidth:0,overflow:'hidden'}}>
+      <TopBar t={t} view={view} generatedIso={data?.generated_iso}
+        darkMode={darkMode} handleDark={handleDark} query={query} setQuery={setQuery}/>
+      <div style={{flex:1,overflowY:'auto',position:'relative'}}>
+        {view==='dashboard'&&<Dashboard t={t} stats={stats} data={data} onOpenProperty={openProperty} onGoThreat={()=>handleView('threat')}/>}
+        {view==='threat'&&<ThreatWatch t={t} stats={stats} onOpenProperty={openProperty}/>}
+        {view==='events3'&&<EventsTable t={t} rows={data?.general?.rows} type="3day" subtitle={stats?.genSubtitle||''} onOpenProperty={openProperty} tracked={tracked}/>}
+        {view==='nogo'&&<EventsTable t={t} rows={data?.no_kings?.rows} type="nogo" subtitle={stats?.nkSubtitle||''} onOpenProperty={openProperty} tracked={tracked}/>}
+        {view==='ice'&&<EventsTable t={t} rows={data?.ice?.rows} type="ice" subtitle={stats?.iceSubtitle||''} tracked={tracked}/>}
+        {view==='elections'&&<EventsTable t={t} rows={data?.elections?.rows} type="elections" subtitle={stats?.elecSubtitle||''} onOpenProperty={openProperty} tracked={tracked}/>}
+        {view==='labor'&&<EventsTable t={t} rows={data?.labor?.rows} type="labor" subtitle={stats?.laborSubtitle||''} onOpenProperty={openProperty} tracked={tracked}/>}
+        {view==='mall'&&<EventsTable t={t} rows={data?.mall?.rows} type="mall" subtitle={stats?.mallSubtitle||''} onOpenProperty={openProperty} tracked={tracked}/>}
+        {view==='tracked'&&<Tracked t={t} tracked={tracked}/>}
+        {view==='map'&&<MapView t={t} markers={stats?.markers}/>}
+        {view==='timeline'&&<Timeline t={t} data={data}/>}
+        {view==='organizers'&&<Organizers t={t} orgs={stats?.orgs}/>}
+        {view==='trends'&&<Trends t={t} data={data} stats={stats}/>}
+        {view==='property'&&<PropertyView t={t} name={selectedProperty} stats={stats} onBack={closeProperty} onOpenProperty={openProperty}/>}
+      </div>
+    </div>
+  </div>;
+};
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
