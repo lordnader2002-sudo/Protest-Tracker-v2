@@ -429,7 +429,6 @@ const NAV=[
   {id:'threat',label:'Threat Watch'},
   {id:'mall',label:'Mall Mentions'},
   {id:'events3',label:'General Events'},
-  {id:'nogo',label:'No Kings Events'},
   {id:'ice',label:'ICE Detention'},
   {id:'elections',label:'Political/Midterm Elections'},
   // Auto-hides once the weekend has passed and the stream is empty
@@ -449,7 +448,6 @@ function navBadge(id,stats,trackedCount){
     case 'dashboard':  return null;
     case 'threat':     return stats.halfMile?.length;
     case 'events3':    return stats.general;
-    case 'nogo':       return stats.noKings;
     case 'ice':        return stats.ice;
     case 'elections':  return stats.elections;
     case 'labor':      return stats.labor;
@@ -523,7 +521,7 @@ const Sidebar=({t,view,setView,stats,version,trackedCount,onLogout})=><aside sty
 </aside>;
 
 /* ═══ TOPBAR ═══════════════════════════════════════════════════ */
-const LABELS={dashboard:'Summary',threat:'Threat Watch',events3:'General Events',nogo:'No Kings Events',
+const LABELS={dashboard:'Summary',threat:'Threat Watch',events3:'General Events',
   pride:'Pride Month 2026',ice:'ICE Detention Centers',elections:'Political / Midterm Elections 2026',labor:'Labor Day Weekend 2026',mall:'Mall Mentions',tracked:'Product Tracker',map:'Map',timeline:'Timeline',
   organizers:'Organizers',trends:'Trends',property:'Property'};
 
@@ -693,7 +691,6 @@ const Dashboard=({t,stats,data,onOpenProperty,onGoThreat})=>{
     {/* Stats */}
     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(140px, 1fr))',gap:12}}>
       <StatCard t={t} label="General Events" value={stats.general} sub="72-hour window" color={t.accent}/>
-      <StatCard t={t} label="No Kings" value={stats.noKings} sub="30-day window" color="#7c3aed"/>
       <StatCard t={t} label="ICE Detention" value={stats.ice} sub="Near detention centers" color="#0891b2"/>
       <StatCard t={t} label="Midterm Elections" value={stats.elections} sub="Through Nov 2026" color="#f59e0b"/>
       <StatCard t={t} label="Labor Day Wknd" value={stats.labor} sub="Sep 4–7 · all themes" color="#e11d48"/>
@@ -986,6 +983,7 @@ const EventsTable=({t,rows,type,subtitle,onOpenProperty,tracked})=>{
   const [sortDir,setSortDir]=useState('asc');
   const [search,setSearch]=useState('');
   const [storeMax,setStoreMax]=useState(type==='ice'?10:0);   // miles; 0 = show all
+  const [nkOnly,setNkOnly]=useState(false);                   // elections tab: No Kings filter
   const [hovered,setHovered]=useState(null);
   const [selected,setSelected]=useState(null);
 
@@ -1008,6 +1006,7 @@ const EventsTable=({t,rows,type,subtitle,onOpenProperty,tracked})=>{
           const d=parseFloat(r.nearest_prop_dist_mi);
           if(isNaN(d)||d>storeMax) return false;
         }
+        if(type==='elections'&&nkOnly&&(r.nk_related||'').toLowerCase()!=='yes') return false;
         if(!search) return true;
         const s=search.toLowerCase();
         return (r.event_title||'').toLowerCase().includes(s)||
@@ -1023,7 +1022,7 @@ const EventsTable=({t,rows,type,subtitle,onOpenProperty,tracked})=>{
         if(va>vb) return sortDir==='asc'?1:-1;
         return 0;
       });
-  },[rows,search,sortCol,sortDir,storeMax,type]);
+  },[rows,search,sortCol,sortDir,storeMax,nkOnly,type]);
 
   const sort=col=>{if(sortCol===col)setSortDir(d=>d==='asc'?'desc':'asc');else{setSortCol(col);setSortDir('asc');}};
 
@@ -1068,6 +1067,11 @@ const EventsTable=({t,rows,type,subtitle,onOpenProperty,tracked})=>{
       </div>}
       {type==='ice'&&storeMax>0&&<span style={{fontSize:11,color:t.textMuted}}>
         {data.length} event{data.length===1?'':'s'} within {storeMax} mi of a property</span>}
+      {type==='elections'&&<button onClick={()=>setNkOnly(v=>!v)} style={{...mono,fontSize:10,fontWeight:700,
+        padding:'7px 12px',borderRadius:4,cursor:'pointer',textTransform:'uppercase',letterSpacing:'.05em',
+        border:`1px solid ${nkOnly?'#7c3aed':t.border}`,color:nkOnly?'#fff':'#7c3aed',
+        background:nkOnly?'#7c3aed':'#7c3aed14'}}>
+        👑 No Kings only{nkOnly?` · ${data.length}`:''}</button>}
     </div>
     <div style={{background:t.surface,border:`1px solid ${t.border}`,borderRadius:4,overflow:'hidden'}}>
       <div style={{overflowX:'auto',maxHeight:'calc(100vh - 220px)',overflowY:'auto'}}>
@@ -1108,7 +1112,13 @@ const EventsTable=({t,rows,type,subtitle,onOpenProperty,tracked})=>{
                     onMouseLeave={e=>{if(onOpenProperty)e.currentTarget.style.color='';}}>{ev.property_name}</span>
                 </td>
                 <td style={{...tdBase,maxWidth:220}}>
-                  <div style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ev.event_title}</div>
+                  <div style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                    {type==='elections'&&(ev.nk_related||'').toLowerCase()==='yes'&&
+                      <span style={{...mono,fontSize:8.5,fontWeight:700,padding:'2px 6px',borderRadius:2,marginRight:6,
+                        textTransform:'uppercase',letterSpacing:'.04em',color:'#7c3aed',verticalAlign:'middle',
+                        background:'#7c3aed18',border:'1px solid #7c3aed35'}}>NO KINGS</span>}
+                    {ev.event_title}
+                  </div>
                   {ev.event_url&&<a href={ev.event_url} target="_blank" rel="noopener" style={{fontSize:10,color:t.accent}}>link</a>}
                 </td>
                 <td style={{...tdBase,fontSize:11}}>{ev.event_type}</td>
@@ -1945,7 +1955,7 @@ const App=()=>{
   </div>;
 
   return <div style={{display:'flex',height:'100vh',overflow:'hidden',background:t.bg}}>
-    <Sidebar t={t} view={view} setView={handleView} stats={stats} version="v2.7"
+    <Sidebar t={t} view={view} setView={handleView} stats={stats} version="v2.8"
       trackedCount={tracked.count} onLogout={sb?auth.logout:undefined}/>
     <div style={{flex:1,display:'flex',flexDirection:'column',minWidth:0,overflow:'hidden'}}>
       <TopBar t={t} view={view} generatedIso={data?.generated_iso}
@@ -1954,7 +1964,6 @@ const App=()=>{
         {view==='dashboard'&&<Dashboard t={t} stats={stats} data={data} onOpenProperty={openProperty} onGoThreat={()=>handleView('threat')}/>}
         {view==='threat'&&<ThreatWatch t={t} stats={stats} onOpenProperty={openProperty}/>}
         {view==='events3'&&<EventsTable t={t} rows={data?.general?.rows} type="3day" subtitle={stats?.genSubtitle||''} onOpenProperty={openProperty} tracked={tracked}/>}
-        {view==='nogo'&&<EventsTable t={t} rows={data?.no_kings?.rows} type="nogo" subtitle={stats?.nkSubtitle||''} onOpenProperty={openProperty} tracked={tracked}/>}
         {view==='ice'&&<EventsTable t={t} rows={data?.ice?.rows} type="ice" subtitle={stats?.iceSubtitle||''} tracked={tracked}/>}
         {view==='elections'&&<EventsTable t={t} rows={data?.elections?.rows} type="elections" subtitle={stats?.elecSubtitle||''} onOpenProperty={openProperty} tracked={tracked}/>}
         {view==='labor'&&<EventsTable t={t} rows={data?.labor?.rows} type="labor" subtitle={stats?.laborSubtitle||''} onOpenProperty={openProperty} tracked={tracked}/>}

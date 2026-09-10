@@ -980,11 +980,13 @@ def is_election_related(event: dict) -> bool:
 
 
 def collect_election_events(properties: list[dict]) -> list[dict]:
-    """Collect midterm-election events near company properties.
+    """Collect midterm-election AND No Kings events near company properties.
 
     Mirrors collect_ice_events but anchors on company properties (standard
-    SEARCH_RADIUS_MI) with the election keyword filter, collecting through
-    ELECTION_END_DATE.  Returns rows sorted by start time.
+    SEARCH_RADIUS_MI) with the election OR No Kings keyword filters,
+    collecting through ELECTION_END_DATE.  No Kings matches are tagged
+    nk_related="Yes" so the dashboard can highlight/filter them.
+    Returns rows sorted by start time.
     """
     if not properties:
         print("  No properties loaded — skipping elections stream.\n")
@@ -1012,7 +1014,11 @@ def collect_election_events(properties: list[dict]) -> list[dict]:
 
     def process_events(events: list[dict], cluster: list[dict]) -> None:
         for ev in events:
-            if not is_election_related(ev):
+            # No Kings events fold into this stream (the movements overlap —
+            # e.g. the Oct 17 "No Kings: Vote Early" wave). nk_related tags
+            # them so the tab can highlight/filter.
+            nk = is_no_kings(ev)
+            if not (is_election_related(ev) or nk):
                 continue
             etype_raw = (ev.get("event_type") or "OTHER").upper()
             if etype_raw in EXCLUDE_TYPES:
@@ -1022,6 +1028,7 @@ def collect_election_events(properties: list[dict]) -> list[dict]:
                     key = (_loc_key(row), row["event_dt_sort"], prop["id"])
                     if key not in seen_elec:
                         seen_elec.add(key)
+                        row["nk_related"] = "Yes" if nk else ""
                         election_rows.append(row)
                         stats["passed"] += 1
 
@@ -1556,7 +1563,7 @@ def build_dashboard_json(general_rows: list[dict], no_kings_rows: list[dict],
                         "featured_image_url", "description", "tags", "is_virtual",
                         "accessibility_notes", "all_timeslots", "rsvp_count",
                         "first_seen_iso", "nearest_prop_name", "nearest_prop_dist_mi",
-                        "mall_terms"]
+                        "mall_terms", "nk_related"]
 
     def _clean(rows):
         out = []
@@ -1592,7 +1599,7 @@ def build_dashboard_json(general_rows: list[dict], no_kings_rows: list[dict],
         },
         "elections": {
             "title": "Political / Midterm Elections 2026",
-            "subtitle": f"{now.strftime('%B %d, %Y')}  through  {end_elec}  •  Within {SEARCH_RADIUS_MI} miles of a property",
+            "subtitle": f"{now.strftime('%B %d, %Y')}  through  {end_elec}  •  Within {SEARCH_RADIUS_MI} miles of a property  •  Includes No Kings events",
             "rows": _clean(election_rows),
         },
         "labor": {
